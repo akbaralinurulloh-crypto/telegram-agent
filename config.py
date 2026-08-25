@@ -10,6 +10,8 @@ load_dotenv(BASE_DIR / ".env")
 TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
 TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "telegram_ai_agent")
+TELEGRAM_SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING", "")
+
 
 # Google Gemini API sozlamalari (aistudio.google.com)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

@@ -187,11 +187,20 @@ async def main():
     logger.info(f"📊 Baza tayyor. Oldingi statistika: {stats}")
 
     # 3. Telegram mijozini ishga tushirish
+    from telethon.sessions import StringSession
+
+    if config.TELEGRAM_SESSION_STRING:
+        session = StringSession(config.TELEGRAM_SESSION_STRING)
+        logger.info("🔑 StringSession orqali ulanmoqda...")
+    else:
+        session = config.TELEGRAM_SESSION_NAME
+
     client = TelegramClient(
-        config.TELEGRAM_SESSION_NAME,
+        session,
         config.TELEGRAM_API_ID,
         config.TELEGRAM_API_HASH
     )
+
 
     await client.start()
     logger.info("🚀 Telegram akkaunt/bot muvaffaqiyatli ulandi!")
