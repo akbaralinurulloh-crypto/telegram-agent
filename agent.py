@@ -202,8 +202,12 @@ async def main():
     )
 
 
-    await client.start()
+    await client.connect()
+    if not await client.is_user_authorized():
+        await client.start()  # type: ignore
+
     logger.info("🚀 Telegram akkaunt/bot muvaffaqiyatli ulandi!")
+
 
     # 4. Manba kanallarni tekshirish va entity olish
     source_entities = []

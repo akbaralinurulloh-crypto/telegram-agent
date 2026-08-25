@@ -24,7 +24,8 @@ async def main():
         return
 
     client = TelegramClient(StringSession(), config.TELEGRAM_API_ID, config.TELEGRAM_API_HASH)
-    await client.start()
+    await client.start()  # type: ignore
+
 
     session_string = client.session.save()
     print("\n✅ MUVAFFAQITYATLI KIRILDI!")
