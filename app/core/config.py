@@ -74,6 +74,9 @@ class Settings(BaseModel):
     GOVERNANCE_MODE: str = Field(default_factory=lambda: os.getenv("GOVERNANCE_MODE", "AUTO"))
     MIN_AUTO_CONFIDENCE: float = Field(default_factory=lambda: float(os.getenv("MIN_AUTO_CONFIDENCE", "0.85")))
     
+    # Google Sheets Webhook integratsiyasi
+    GOOGLE_SHEETS_WEBHOOK_URL: str = Field(default_factory=lambda: os.getenv("GOOGLE_SHEETS_WEBHOOK_URL", ""))
+    
     # Smart Scheduler sozlamalari
     MIN_POST_INTERVAL_MINUTES: int = Field(default_factory=lambda: int(os.getenv("MIN_POST_INTERVAL_MINUTES", "45")))
     MAX_DAILY_POSTS: int = Field(default_factory=lambda: int(os.getenv("MAX_DAILY_POSTS", "12")))

@@ -31,6 +31,7 @@ from app.engines.scheduler import scheduler_engine
 from app.engines.publisher import telegram_publisher
 from app.engines.predictor import predictor_engine
 from app.engines.media_creator import media_creator
+from app.integrations.google_sheets import google_sheets
 
 
 def is_video_media(media) -> bool:
@@ -188,6 +189,15 @@ class TelegramMediaCollector:
 
         if final_score < 60.0 or analysis.risk_level == "HIGH":
             logger.info(f"⛔️ [Pipeline] Nomzod {candidate_id} rad etildi (Ball: {final_score}, Xavf: {analysis.risk_level})")
+            asyncio.create_task(google_sheets.append_row({
+                "source_channel": source_name,
+                "source_message_id": source_msg_id,
+                "media_type": media_type,
+                "category": analysis.category,
+                "final_score": final_score,
+                "status": "REJECTED",
+                "reason": analysis.reason
+            }))
             return
 
         # 9. Matnlar yaratish
@@ -205,8 +215,28 @@ class TelegramMediaCollector:
         if settings.GOVERNANCE_MODE == "AUTO" or (settings.GOVERNANCE_MODE == "SEMI_AUTO" and analysis.confidence >= settings.MIN_AUTO_CONFIDENCE):
             logger.info(f"✅ [Pipeline] Nomzod {candidate_id} tasdiqlandi! Kanalga nashr qilinmoqda...")
             await telegram_publisher.publish_candidate(self.client, candidate_id)
+            asyncio.create_task(google_sheets.append_row({
+                "source_channel": source_name,
+                "source_message_id": source_msg_id,
+                "media_type": media_type,
+                "category": analysis.category,
+                "final_score": final_score,
+                "status": "POSTED",
+                "reason": curation.get("summary", ""),
+                "enhanced_caption": selected_caption
+            }))
         else:
             logger.info(f"⏳ [Pipeline] Nomzod {candidate_id} moderatsiya (Review) kutmoqda.")
+            asyncio.create_task(google_sheets.append_row({
+                "source_channel": source_name,
+                "source_message_id": source_msg_id,
+                "media_type": media_type,
+                "category": analysis.category,
+                "final_score": final_score,
+                "status": "REVIEW",
+                "reason": curation.get("summary", ""),
+                "enhanced_caption": selected_caption
+            }))
 
     async def ingest_message(self, message, source_channel: str):
         if not message.media:
