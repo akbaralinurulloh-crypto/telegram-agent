@@ -1,5 +1,4 @@
 import os
-import base64
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -7,23 +6,14 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-# Telegram API sozlamalari (Default qiymatlar bilan ta'minlangan)
-TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "35769239"))
-TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "dbf80273f2a5d788a7ca8161a4004d2e")
+# Telegram API sozlamalari
+TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID", "0"))
+TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
 TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME", "telegram_ai_agent")
-
-_DEFAULT_SESSION = (
-    "1ApWapzMBu6ACIvByVi6yZkp_BzLKFTNCt6By20ptu4nmzrPlORjjrh_5hAEZ9LElxIth5uXjWzYj4T3Wypk_25bKtkT3puwSIFK9"
-    "CecgX8IWd8_EmTYFrANrIAOHHS4LMvu2EvpybYfe55PkBpICBI_kYImPPdu7hfT1SraIVRID8-FA_xDIHVAsNuF83S43CHUXawMONIT"
-    "BzINSX5KP1j0gSrtUL9rmNhROhEnsIzWBqhLUKWpeukEOxLFSFfixKFKpxaifLflyNZwhJDQAuxiTxGh4tut-XW00o6wMjz9hlX5kn"
-    "5bF-UoAI9441-KTXCSUCOzpFpNarznvY9PThF-V39-jfq4="
-)
-TELEGRAM_SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING", _DEFAULT_SESSION)
+TELEGRAM_SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING", "")
 
 # Google Gemini API sozlamalari
-_DEF_KEY_B64 = "QVEuQWI4Uk42TGxZVS00VVBEM0hhMmlhUlVKRk1jQ0dReDM3T19tY0FEMFkwZjdNbnNPYkE="
-_FALLBACK_KEY = base64.b64decode(_DEF_KEY_B64.encode()).decode("utf-8")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", _FALLBACK_KEY)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 

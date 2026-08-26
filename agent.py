@@ -13,7 +13,15 @@ if sys.platform == "win32":
         pass
 
 from telethon import TelegramClient, events
-from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
+from telethon.tl.types import (
+    MessageMediaPhoto,
+    MessageMediaDocument,
+    DocumentAttributeVideo,
+    DocumentAttributeAnimated,
+    ChannelParticipantAdmin,
+    ChannelParticipantCreator
+)
+from telethon.tl.functions.channels import GetParticipantRequest
 
 import config
 import database
@@ -31,10 +39,12 @@ logger = logging.getLogger("TelegramAIAgent")
 
 
 def is_video_media(media) -> bool:
-    """Media video ekanligini tekshiradi."""
-    if isinstance(media, MessageMediaDocument):
+    """Media video ekanligini aniq tekshiradi."""
+    if isinstance(media, MessageMediaDocument) and media.document:
         doc = media.document
-        if doc and doc.mime_type and doc.mime_type.startswith("video/"):
+        if doc.mime_type and doc.mime_type.startswith("video/"):
+            return True
+        if any(isinstance(attr, (DocumentAttributeVideo, DocumentAttributeAnimated)) for attr in (doc.attributes or [])):
             return True
     return False
 
@@ -43,9 +53,9 @@ def is_photo_media(media) -> bool:
     """Media rasm ekanligini tekshiradi."""
     if isinstance(media, MessageMediaPhoto):
         return True
-    if isinstance(media, MessageMediaDocument):
+    if isinstance(media, MessageMediaDocument) and media.document:
         doc = media.document
-        if doc and doc.mime_type and doc.mime_type.startswith("image/"):
+        if doc.mime_type and doc.mime_type.startswith("image/"):
             return True
     return False
 
@@ -156,7 +166,7 @@ async def process_media_message(client: TelegramClient, message, source_channel_
                 logger.warning(f"Vaqtinchalik faylni o'chirishda xatolik: {e}")
 
 
-async def scan_recent_messages(client: TelegramClient, limit: int = 3):
+async def scan_recent_messages(client: TelegramClient, limit: int = 50):
     """Agent ishga tushganda manba kanallardagi oxirgi postlarni ko'rib chiqish."""
     logger.info(f"🔍 Manba kanallardagi oxirgi {limit} ta xabar tekshirilmoqda...")
     for source in config.SOURCE_CHANNELS:
@@ -229,16 +239,19 @@ async def main():
     if not await client.is_user_authorized():
         await client.start()  # type: ignore
 
-    logger.info("🚀 Telegram akkaunt/bot muvaffaqiyatli ulandi!")
+    me = await client.get_me()
+    logger.info(f"🚀 Telegram akkaunt muvaffaqiyatli ulandi: {getattr(me, 'first_name', '')} (@{getattr(me, 'username', 'no_username')}, ID: {me.id})")
 
 
     # 4. Manba kanallarni tekshirish va entity olish
     source_entities = []
+    source_channel_map = {}
     for source in config.SOURCE_CHANNELS:
         try:
             entity = await client.get_entity(source)
             source_entities.append(entity)
-            logger.info(f"✅ Manba kanal ulandi: {source}")
+            source_channel_map[entity.id] = source
+            logger.info(f"✅ Manba kanal ulandi: {source} (Title: {getattr(entity, 'title', '')})")
         except Exception as e:
             logger.error(f"❌ Manba kanal topilmadi ({source}): {e}")
 
@@ -246,17 +259,31 @@ async def main():
         logger.error("❌ Hech qaysi manba kanalga ulanib bo'lmadi! Dastur to'xtatildi.")
         return
 
-    # 5. Maqsadli kanalni tekshirish
+    # 5. Maqsadli kanalni tekshirish va admin huquqlarini tekshirish
     try:
         target_entity = await client.get_entity(config.TARGET_CHANNEL)
-        logger.info(f"✅ Maqsadli (joylanadigan) kanal tasdiqlandi: {config.TARGET_CHANNEL}")
+        logger.info(f"✅ Maqsadli (joylanadigan) kanal topildi: {config.TARGET_CHANNEL} (Title: {getattr(target_entity, 'title', '')})")
+        
+        # Admin huquqini tekshirish
+        try:
+            p = await client(GetParticipantRequest(channel=target_entity, participant=me))
+            if not isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator)):
+                logger.warning(
+                    f"⚠️ OGOHLANTIRISH: Telegram akkauntingiz (@{getattr(me, 'username', me.id)}) maqsadli kanalda ({config.TARGET_CHANNEL}) Admin emas! "
+                    "Post joylash uchun ushbu akkauntni kanalda Administrator qilishingiz kerak."
+                )
+        except Exception:
+            logger.warning(
+                f"⚠️ OGOHLANTIRISH: Telegram akkauntingiz (@{getattr(me, 'username', me.id)}) maqsadli kanalda ({config.TARGET_CHANNEL}) a'zo/admin emas! "
+                f"Iltimos, Telegram orqali @{getattr(me, 'username', me.id)} akkauntini {config.TARGET_CHANNEL} kanaliga Administrator qilib qo'shing."
+            )
     except Exception as e:
         logger.error(f"❌ Maqsadli kanalga ulanib bo'lmadi ({config.TARGET_CHANNEL}): {e}")
         logger.error("Akkauntingiz yoki botingiz ushbu kanalda administrator ekanligiga ishonch hosil qiling!")
         return
 
     # 6. Oxirgi postlarni tekshirish (o'tkazib yuborilganlarni ilib olish uchun)
-    await scan_recent_messages(client, limit=3)
+    await scan_recent_messages(client, limit=50)
 
     # 7. Real vaqtda yangi postlarni tinglash hodisasi
     @client.on(events.NewMessage(chats=source_entities))
@@ -264,11 +291,12 @@ async def main():
         message = event.message
         if message.media:
             chat = await event.get_chat()
-            chat_identifier = getattr(chat, "username", None) or str(chat.id)
-            if chat_identifier and not chat_identifier.startswith("@") and not str(chat.id).startswith("-"):
-                chat_identifier = f"@{chat_identifier}"
-            logger.info(f"⚡️ Yangi post keldi ({chat_identifier})! Qayta ishlanmoqda...")
-            await process_media_message(client, message, chat_identifier)
+            chat_id = getattr(chat, "id", None)
+            source_name = source_channel_map.get(chat_id)
+            if not source_name:
+                source_name = f"@{chat.username}" if getattr(chat, "username", None) else str(chat_id)
+            logger.info(f"⚡️ Yangi post keldi ({source_name})! Qayta ishlanmoqda...")
+            await process_media_message(client, message, source_name)
 
     logger.info("🟢 AGENT TO'LIQ ISHGA TUSHDI VA 24/7 REJIMDA YANGI POSTLARNI KUTMOQDA...")
     

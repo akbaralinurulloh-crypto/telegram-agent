@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -107,24 +108,60 @@ async def evaluate_media(
             img = Image.open(media_path)
             contents.append(img)
         elif media_type == "video":
-            # Videoni Gemini API ga yuklash
+            # Videoni Gemini API ga yuklash (asinxron)
             logger.info(f"Video Gemini-ga tahlil uchun yuklanmoqda: {media_path.name}...")
-            uploaded_file = client.files.upload(file=str(media_path))
+            uploaded_file = await client.aio.files.upload(file=str(media_path))
+            # Video qayta ishlanishini kutish
+            while getattr(uploaded_file, "state", None) and uploaded_file.state.name == "PROCESSING":
+                logger.info("Video Gemini tomonidan qayta ishlanmoqda, kutilmoqda...")
+                await asyncio.sleep(2)
+                uploaded_file = await client.aio.files.get(name=uploaded_file.name)
+
+            if getattr(uploaded_file, "state", None) and uploaded_file.state.name == "FAILED":
+                raise ValueError("Gemini-da videoni qayta ishlash muvaffaqiyatsiz bo'ldi.")
+
             contents.append(uploaded_file)
         else:
             raise ValueError(f"Noma'lum media turi: {media_type}")
 
-        # AI tahlili
+        # AI tahlili (asinxron - retry va fallback modellar bilan)
         logger.info(f"AI media faylni tahlil qilmoqda ({media_type})...")
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=EvaluationResult,
-                temperature=0.4
-            )
-        )
+        models_to_try = [GEMINI_MODEL, "gemini-3.5-flash", "gemini-flash-latest", "gemini-3.7-flash"]
+        # Unique tartibda saqlash
+        seen = set()
+        models_queue = []
+        for m in models_to_try:
+            if m and m not in seen:
+                seen.add(m)
+                models_queue.append(m)
+
+        response = None
+        last_error = None
+
+        for model_name in models_queue:
+            for attempt in range(2):
+                try:
+                    logger.info(f"Gemini tahlil so'rovi ({model_name}, urinish {attempt + 1})...")
+                    response = await client.aio.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_schema=EvaluationResult,
+                            temperature=0.4
+                        )
+                    )
+                    if response and response.text:
+                        break
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Model {model_name} (urinish {attempt + 1}) xatolik: {e}")
+                    await asyncio.sleep(2)
+            if response and response.text:
+                break
+
+        if not response or not response.text:
+            raise last_error or RuntimeError("Gemini tahlili muvaffaqiyatsiz bo'ldi.")
 
         result_data = json.loads(response.text)
         result = EvaluationResult(**result_data)
@@ -139,6 +176,6 @@ async def evaluate_media(
         # Agar video yuklangan bo'lsa, serverdan o'chirish (tozalash)
         if uploaded_file is not None:
             try:
-                client.files.delete(name=uploaded_file.name)
+                await client.aio.files.delete(name=uploaded_file.name)
             except Exception as e:
                 logger.warning(f"Vaqtinchalik video faylni o'chirishda xatolik: {e}")

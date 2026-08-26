@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: telegram-ai-agent
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python agent.py
+    plan: free
+    envVars:
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_SESSION_STRING
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: SOURCE_CHANNELS
+        sync: false
+      - key: TARGET_CHANNEL
+        sync: false
+      - key: MIN_QUALITY_SCORE
+        value: "6"
+      - key: CHANNEL_TOPIC
+        sync: false

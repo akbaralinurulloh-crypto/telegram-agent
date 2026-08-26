@@ -26,10 +26,10 @@ async def init_db():
 
 
 async def is_message_processed(source_channel: str, source_message_id: int) -> bool:
-    """Xabar avval tekshirilganmi yoki yo'qligini aniqlash."""
+    """Xabar avval muvaffaqiyatli tekshirilganmi yoki yo'qligini aniqlash (ERROR holatidagilarni qayta ishlashga ruxsat beradi)."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT 1 FROM processed_messages WHERE source_channel = ? AND source_message_id = ?",
+            "SELECT 1 FROM processed_messages WHERE source_channel = ? AND source_message_id = ? AND status != 'ERROR'",
             (source_channel, source_message_id)
         ) as cursor:
             row = await cursor.fetchone()
