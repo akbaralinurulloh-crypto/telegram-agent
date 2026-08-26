@@ -171,20 +171,43 @@ async def scan_recent_messages(client: TelegramClient, limit: int = 3):
             logger.error(f"Kanalni tekshirishda xatolik ({source}): {e}")
 
 
+async def start_health_check_server():
+    """Render Web Service uchun yengil HTTP health-check serveri."""
+    port = int(os.getenv("PORT", "10000"))
+    
+    async def handle_http(reader, writer):
+        try:
+            await reader.read(1024)
+            response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nTelegram AI Agent is active and running 24/7!"
+            writer.write(response)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    server = await asyncio.start_server(handle_http, "0.0.0.0", port)
+    logger.info(f"🌐 Render Health-Check HTTP serveri {port}-portda ishga tushdi.")
+    return server
+
+
 async def main():
+    # 0. Health check HTTP serverini ishga tushirish (Render uchun)
+    await start_health_check_server()
+
     # 1. Sozlamalarni tekshirish
     errors = config.validate_config()
     if errors:
         logger.error("❌ Konfiguratsiya xatoliklari:")
         for err in errors:
             logger.error(f"  - {err}")
-        logger.error("Iltimos, '.env' faylini to'g'ri to'ldiring (.env.example ga qarang).")
         return
 
     # 2. Bazani ishga tushirish
     await database.init_db()
     stats = await database.get_stats()
     logger.info(f"📊 Baza tayyor. Oldingi statistika: {stats}")
+
 
     # 3. Telegram mijozini ishga tushirish
     from telethon.sessions import StringSession
