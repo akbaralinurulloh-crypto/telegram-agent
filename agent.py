@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import logging
+import uvicorn
 from pathlib import Path
 
 # Windows UTF-8 qo'llab-quvvatlash
@@ -13,295 +14,118 @@ if sys.platform == "win32":
         pass
 
 from telethon import TelegramClient, events
-from telethon.tl.types import (
-    MessageMediaPhoto,
-    MessageMediaDocument,
-    DocumentAttributeVideo,
-    DocumentAttributeAnimated,
-    ChannelParticipantAdmin,
-    ChannelParticipantCreator
-)
+from telethon.tl.types import ChannelParticipantAdmin, ChannelParticipantCreator
 from telethon.tl.functions.channels import GetParticipantRequest
 
 import config
 import database
-from ai_evaluator import evaluate_media
-
-# Logging sozlamalari
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger("TelegramAIAgent")
+from app.core.config import settings
+from app.core.logging import logger
+from app.core.database import init_db
+from app.core.queue import queue_manager
+from app.collectors.telegram_collector import collector, is_photo_media, is_video_media
+from app.bot.admin_bot import register_admin_bot_handlers
+from app.engines.analytics import analytics_engine
+from app.engines.strategist import strategist_engine
+from app.api.app import app as fastapi_app
 
 
-def is_video_media(media) -> bool:
-    """Media video ekanligini aniq tekshiradi."""
-    if isinstance(media, MessageMediaDocument) and media.document:
-        doc = media.document
-        if doc.mime_type and doc.mime_type.startswith("video/"):
-            return True
-        if any(isinstance(attr, (DocumentAttributeVideo, DocumentAttributeAnimated)) for attr in (doc.attributes or [])):
-            return True
-    return False
+async def start_web_server():
+    """FastAPI REST API, Control Center Dashboard va Render Health-Check serveri."""
+    port = int(os.getenv("PORT", str(settings.PORT)))
+    config_uvicorn = uvicorn.Config(
+        app=fastapi_app,
+        host="0.0.0.0",
+        port=port,
+        log_level="warning",
+        access_log=False
+    )
+    server = uvicorn.Server(config_uvicorn)
+    logger.info(f"🌐 Autonomous AI Control Center & API {port}-portda ishga tushdi: http://0.0.0.0:{port}")
+    return asyncio.create_task(server.serve())
 
 
-def is_photo_media(media) -> bool:
-    """Media rasm ekanligini tekshiradi."""
-    if isinstance(media, MessageMediaPhoto):
-        return True
-    if isinstance(media, MessageMediaDocument) and media.document:
-        doc = media.document
-        if doc.mime_type and doc.mime_type.startswith("image/"):
-            return True
-    return False
-
-
-async def process_media_message(client: TelegramClient, message, source_channel_name: str):
-    """Bitta xabarni to'liq qayta ishlash sikli."""
-    source_msg_id = message.id
-    
-    # 1. Baza orqali avval ko'rilganmi tekshirish
-    if await database.is_message_processed(source_channel_name, source_msg_id):
-        logger.info(f"⏭ [{source_channel_name}:{source_msg_id}] Ushbu xabar avval qayta ishlangan. Tashlab ketilmoqda.")
-        return
-
-    # 2. Media turini aniqlash
-    media_type = None
-    if is_photo_media(message.media):
-        media_type = "photo"
-    elif is_video_media(message.media):
-        media_type = "video"
-    else:
-        logger.info(f"⏭ [{source_channel_name}:{source_msg_id}] Xabarda rasm yoki video yo'q. Tashlab ketilmoqda.")
-        await database.save_processed_message(
-            source_channel=source_channel_name,
-            source_message_id=source_msg_id,
-            media_type="text_or_other",
-            status="SKIPPED_NO_MEDIA"
-        )
-        return
-
-    logger.info(f"📥 [{source_channel_name}:{source_msg_id}] Yangi {media_type} topildi. Yuklab olinmoqda...")
-
-    # 3. Faylni yuklab olish
-    temp_file_path = None
-    try:
-        temp_file_path = await message.download_media(file=config.DOWNLOAD_DIR)
-        if not temp_file_path or not os.path.exists(temp_file_path):
-            logger.error(f"❌ Faylni yuklab olishda xatolik: {temp_file_path}")
-            return
-
-        original_caption = message.raw_text or ""
-
-        # 4. Sun'iy intellekt (Gemini) orqali tahlil qilish va izoh tayyorlash
-        logger.info(f"🧠 [{source_channel_name}:{source_msg_id}] AI tahlili boshlandi...")
-        eval_result = await evaluate_media(
-            media_path=temp_file_path,
-            media_type=media_type,
-            original_caption=original_caption
-        )
-
-        # 5. Qaror: Kanalga joylash yoki rad etish
-        if eval_result.is_approved:
-            logger.info(
-                f"✅ [{source_channel_name}:{source_msg_id}] TASDIQLANDI! "
-                f"Ball: {eval_result.quality_score}/10. Maqsadli kanalga yuklanmoqda ({config.TARGET_CHANNEL})..."
-            )
-            
-            # Maqsadli kanalga yuborish
-            sent_msg = await client.send_file(
-                config.TARGET_CHANNEL,
-                file=temp_file_path,
-                caption=eval_result.enhanced_caption,
-                parse_mode="markdown"
-            )
-
-            # Bazaga muvaffaqiyatli saqlash
-            await database.save_processed_message(
-                source_channel=source_channel_name,
-                source_message_id=source_msg_id,
-                media_type=media_type,
-                status="POSTED",
-                quality_score=eval_result.quality_score,
-                reason=eval_result.reason,
-                target_message_id=sent_msg.id,
-                original_caption=original_caption,
-                enhanced_caption=eval_result.enhanced_caption
-            )
-            logger.info(f"🎉 Post muvaffaqiyatli joylandi! (Target Msg ID: {sent_msg.id})")
-        else:
-            logger.info(
-                f"⛔️ [{source_channel_name}:{source_msg_id}] RAD ETILDI. "
-                f"Ball: {eval_result.quality_score}/10. Sabab: {eval_result.reason}"
-            )
-            await database.save_processed_message(
-                source_channel=source_channel_name,
-                source_message_id=source_msg_id,
-                media_type=media_type,
-                status="REJECTED",
-                quality_score=eval_result.quality_score,
-                reason=eval_result.reason,
-                original_caption=original_caption
-            )
-
-    except Exception as e:
-        logger.error(f"❌ Xabarni qayta ishlashda xatolik yuz berdi: {e}", exc_info=True)
-        await database.save_processed_message(
-            source_channel=source_channel_name,
-            source_message_id=source_msg_id,
-            media_type=media_type or "unknown",
-            status="ERROR",
-            reason=str(e)
-        )
-    finally:
-        # 6. Vaqtinchalik faylni o'chirish
-        if temp_file_path and os.path.exists(temp_file_path):
-            try:
-                os.remove(temp_file_path)
-            except Exception as e:
-                logger.warning(f"Vaqtinchalik faylni o'chirishda xatolik: {e}")
-
-
-async def scan_recent_messages(client: TelegramClient, limit: int = 50):
-    """Agent ishga tushganda manba kanallardagi oxirgi postlarni ko'rib chiqish."""
-    logger.info(f"🔍 Manba kanallardagi oxirgi {limit} ta xabar tekshirilmoqda...")
-    for source in config.SOURCE_CHANNELS:
+async def scan_recent_messages(limit: int = 50):
+    """Manba kanallardagi oxirgi postlarni skaner qilish va saralash."""
+    logger.info(f"🔍 Manba kanallardagi oxirgi {limit} ta post tekshirilmoqda...")
+    for source in settings.SOURCE_CHANNELS:
         try:
-            entity = await client.get_entity(source)
-            messages = await client.get_messages(entity, limit=limit)
-            # Eng eskidan yangiga qarab qayta ishlash
+            entity = await collector.client.get_entity(source)
+            messages = await collector.client.get_messages(entity, limit=limit)
             for msg in reversed(messages):
                 if msg.media:
-                    await process_media_message(client, msg, source)
+                    await collector.ingest_message(msg, source)
         except Exception as e:
-            logger.error(f"Kanalni tekshirishda xatolik ({source}): {e}")
+            logger.error(f"Kanalni skaner qilishda xatolik ({source}): {e}")
 
 
-async def start_health_check_server():
-    """Render Web Service uchun yengil HTTP health-check serveri."""
-    port = int(os.getenv("PORT", "10000"))
-    
-    async def handle_http(reader, writer):
+async def periodic_analytics_loop():
+    """Har 30 daqiqada postlar tahlilini (views, reactions, engagement) yangilash."""
+    while True:
         try:
-            await reader.read(1024)
-            response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nTelegram AI Agent is active and running 24/7!"
-            writer.write(response)
-            await writer.drain()
-            writer.close()
-            await writer.wait_closed()
-        except Exception:
-            pass
-
-    server = await asyncio.start_server(handle_http, "0.0.0.0", port)
-    logger.info(f"🌐 Render Health-Check HTTP serveri {port}-portda ishga tushdi.")
-    return server
+            await asyncio.sleep(1800)  # 30 daqiqa
+            logger.info("📊 Davriy post statistikasi (Analytics) yig'ilmoqda...")
+            await analytics_engine.collect_post_metrics(collector.client, limit=20)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"Davriy tahlilda xatolik: {e}")
 
 
 async def main():
-    # 0. Health check HTTP serverini ishga tushirish (Render uchun)
-    await start_health_check_server()
+    logger.info("=================================================================")
+    logger.info("🤖 AUTONOMOUS TELEGRAM AI MEDIA CREATOR & INTELLIGENCE PLATFORM")
+    logger.info("=================================================================")
 
-    # 1. Sozlamalarni tekshirish
-    errors = config.validate_config()
-    if errors:
-        logger.error("❌ Konfiguratsiya xatoliklari:")
-        for err in errors:
-            logger.error(f"  - {err}")
-        return
+    # 1. Web serverni ishga tushirish (Dashboard, REST API & Render Health-Check)
+    web_task = await start_web_server()
 
-    # 2. Bazani ishga tushirish
-    await database.init_db()
+    # 2. Ma'lumotlar bazasini initsializatsiya qilish
+    await init_db()
     stats = await database.get_stats()
     logger.info(f"📊 Baza tayyor. Oldingi statistika: {stats}")
 
+    # 3. Asinxron ko'p bosqichli navbat tizimini boshlash
+    await queue_manager.start()
 
-    # 3. Telegram mijozini ishga tushirish
-    from telethon.sessions import StringSession
+    # 4. Telegram Collector va mijozini ishga tushirish
+    await collector.initialize()
 
-    if config.TELEGRAM_SESSION_STRING:
-        session = StringSession(config.TELEGRAM_SESSION_STRING)
-        logger.info("🔑 StringSession orqali ulanmoqda...")
-    else:
-        session = config.TELEGRAM_SESSION_NAME
+    # 5. Admin Telegram Bot buyruqlarini ulash
+    register_admin_bot_handlers(collector.client)
 
-    client = TelegramClient(
-        session,
-        config.TELEGRAM_API_ID,
-        config.TELEGRAM_API_HASH
-    )
-
-
-    await client.connect()
-    if not await client.is_user_authorized():
-        await client.start()  # type: ignore
-
-    me = await client.get_me()
-    logger.info(f"🚀 Telegram akkaunt muvaffaqiyatli ulandi: {getattr(me, 'first_name', '')} (@{getattr(me, 'username', 'no_username')}, ID: {me.id})")
-
-
-    # 4. Manba kanallarni tekshirish va entity olish
-    source_entities = []
-    source_channel_map = {}
-    for source in config.SOURCE_CHANNELS:
-        try:
-            entity = await client.get_entity(source)
-            source_entities.append(entity)
-            source_channel_map[entity.id] = source
-            logger.info(f"✅ Manba kanal ulandi: {source} (Title: {getattr(entity, 'title', '')})")
-        except Exception as e:
-            logger.error(f"❌ Manba kanal topilmadi ({source}): {e}")
-
-    if not source_entities:
-        logger.error("❌ Hech qaysi manba kanalga ulanib bo'lmadi! Dastur to'xtatildi.")
-        return
-
-    # 5. Maqsadli kanalni tekshirish va admin huquqlarini tekshirish
+    # 6. Kanal va adminlik huquqlarini tekshirish
+    me = await collector.client.get_me()
     try:
-        target_entity = await client.get_entity(config.TARGET_CHANNEL)
-        logger.info(f"✅ Maqsadli (joylanadigan) kanal topildi: {config.TARGET_CHANNEL} (Title: {getattr(target_entity, 'title', '')})")
+        target_entity = await collector.client.get_entity(settings.TARGET_CHANNEL)
+        logger.info(f"✅ Maqsadli kanal topildi: {settings.TARGET_CHANNEL} (Title: {getattr(target_entity, 'title', '')})")
         
-        # Admin huquqini tekshirish
         try:
-            p = await client(GetParticipantRequest(channel=target_entity, participant=me))
+            p = await collector.client(GetParticipantRequest(channel=target_entity, participant=me))
             if not isinstance(p.participant, (ChannelParticipantAdmin, ChannelParticipantCreator)):
-                logger.warning(
-                    f"⚠️ OGOHLANTIRISH: Telegram akkauntingiz (@{getattr(me, 'username', me.id)}) maqsadli kanalda ({config.TARGET_CHANNEL}) Admin emas! "
-                    "Post joylash uchun ushbu akkauntni kanalda Administrator qilishingiz kerak."
-                )
+                logger.warning(f"⚠️ OGOHLANTIRISH: @{getattr(me, 'username', me.id)} maqsadli kanalda Admin emas!")
         except Exception:
-            logger.warning(
-                f"⚠️ OGOHLANTIRISH: Telegram akkauntingiz (@{getattr(me, 'username', me.id)}) maqsadli kanalda ({config.TARGET_CHANNEL}) a'zo/admin emas! "
-                f"Iltimos, Telegram orqali @{getattr(me, 'username', me.id)} akkauntini {config.TARGET_CHANNEL} kanaliga Administrator qilib qo'shing."
-            )
+            logger.warning(f"⚠️ OGOHLANTIRISH: Telegram akkauntingiz maqsadli kanalda Administrator emas!")
     except Exception as e:
-        logger.error(f"❌ Maqsadli kanalga ulanib bo'lmadi ({config.TARGET_CHANNEL}): {e}")
-        logger.error("Akkauntingiz yoki botingiz ushbu kanalda administrator ekanligiga ishonch hosil qiling!")
-        return
+        logger.error(f"❌ Maqsadli kanalga ulanib bo'lmadi ({settings.TARGET_CHANNEL}): {e}")
 
-    # 6. Oxirgi postlarni tekshirish (o'tkazib yuborilganlarni ilib olish uchun)
-    await scan_recent_messages(client, limit=50)
+    # 7. Oxirgi postlarni skaner qilish
+    await scan_recent_messages(limit=30)
 
-    # 7. Real vaqtda yangi postlarni tinglash hodisasi
-    @client.on(events.NewMessage(chats=source_entities))
-    async def handler(event):
-        message = event.message
-        if message.media:
-            chat = await event.get_chat()
-            chat_id = getattr(chat, "id", None)
-            source_name = source_channel_map.get(chat_id)
-            if not source_name:
-                source_name = f"@{chat.username}" if getattr(chat, "username", None) else str(chat_id)
-            logger.info(f"⚡️ Yangi post keldi ({source_name})! Qayta ishlanmoqda...")
-            await process_media_message(client, message, source_name)
+    # 8. Real-vaqt tinglovchisini boshlash
+    await collector.start_listening()
 
-    logger.info("🟢 AGENT TO'LIQ ISHGA TUSHDI VA 24/7 REJIMDA YANGI POSTLARNI KUTMOQDA...")
+    # 9. Davriy analitika vazifasini boshlash
+    analytics_task = asyncio.create_task(periodic_analytics_loop())
+
+    logger.info("🟢 TIZIM TO'LIQ ISHGA TUSHDI VA 24/7 AVTOPILOT REJIMIDA FAOL!")
     
-    # Doimiy ishlash holatida ushlab turish
-    await client.run_until_disconnected()
+    try:
+        await collector.client.run_until_disconnected()
+    finally:
+        await queue_manager.stop()
+        analytics_task.cancel()
+        web_task.cancel()
 
 
 if __name__ == "__main__":

@@ -1,39 +1,28 @@
 import aiosqlite
 from datetime import datetime
-from config import DATABASE_PATH
+from app.core.config import settings
+from app.core.database import init_db as app_init_db, get_db_session
+from app.models.schema import LegacyProcessedMessage
+from sqlalchemy import select, func
+
+DATABASE_PATH = settings.BASE_DIR / "agent_database.sqlite"
 
 
 async def init_db():
-    """Ma'lumotlar bazasini va jadvallarni initsializatsiya qilish."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS processed_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source_channel TEXT NOT NULL,
-                source_message_id INTEGER NOT NULL,
-                media_type TEXT,
-                status TEXT NOT NULL,
-                quality_score INTEGER DEFAULT 0,
-                reason TEXT,
-                target_message_id INTEGER,
-                original_caption TEXT,
-                enhanced_caption TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(source_channel, source_message_id)
-            )
-        """)
-        await db.commit()
+    """Barcha jadvallarni va orqaga moslikni initsializatsiya qilish."""
+    await app_init_db()
 
 
 async def is_message_processed(source_channel: str, source_message_id: int) -> bool:
-    """Xabar avval muvaffaqiyatli tekshirilganmi yoki yo'qligini aniqlash (ERROR holatidagilarni qayta ishlashga ruxsat beradi)."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        async with db.execute(
-            "SELECT 1 FROM processed_messages WHERE source_channel = ? AND source_message_id = ? AND status != 'ERROR'",
-            (source_channel, source_message_id)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row is not None
+    """Xabar avval tekshirilganmi (ERROR bo'lmagan)? (Yangi va eski jadvallar orqali)."""
+    async with get_db_session() as session:
+        query = select(LegacyProcessedMessage).where(
+            LegacyProcessedMessage.source_channel == source_channel,
+            LegacyProcessedMessage.source_message_id == source_message_id,
+            LegacyProcessedMessage.status != "ERROR"
+        )
+        res = await session.execute(query)
+        return res.scalar_one_or_none() is not None
 
 
 async def save_processed_message(
@@ -47,36 +36,43 @@ async def save_processed_message(
     original_caption: str | None = None,
     enhanced_caption: str | None = None
 ):
-    """Qayta ishlangan xabar natijasini bazaga yozib qo'yish."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("""
-            INSERT OR REPLACE INTO processed_messages 
-            (source_channel, source_message_id, media_type, status, quality_score, reason, target_message_id, original_caption, enhanced_caption, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            source_channel,
-            source_message_id,
-            media_type,
-            status,
-            quality_score,
-            reason,
-            target_message_id,
-            original_caption,
-            enhanced_caption,
-            datetime.now().isoformat()
-        ))
-        await db.commit()
+    """Qayta ishlangan xabar natijasini bazaga yozib qo'yish (orqaga moslik bilan)."""
+    async with get_db_session() as session:
+        # Avval mavjud bo'lsa yangilash, bo'lmasa yaratish
+        query = select(LegacyProcessedMessage).where(
+            LegacyProcessedMessage.source_channel == source_channel,
+            LegacyProcessedMessage.source_message_id == source_message_id
+        )
+        res = await session.execute(query)
+        obj = res.scalar_one_or_none()
+        if not obj:
+            obj = LegacyProcessedMessage(
+                source_channel=source_channel,
+                source_message_id=source_message_id
+            )
+            session.add(obj)
+        
+        obj.media_type = media_type
+        obj.status = status
+        obj.quality_score = quality_score
+        obj.reason = reason
+        obj.target_message_id = target_message_id
+        obj.original_caption = original_caption
+        obj.enhanced_caption = enhanced_caption
+        obj.created_at = datetime.utcnow()
+        await session.commit()
 
 
 async def get_stats() -> dict:
     """Agent faoliyati statistikasi."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM processed_messages") as c1:
-            total = (await c1.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM processed_messages WHERE status = 'POSTED'") as c2:
-            posted = (await c2.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM processed_messages WHERE status LIKE 'REJECTED%'") as c3:
-            rejected = (await c3.fetchone())[0]
+    async with get_db_session() as session:
+        total = (await session.execute(select(func.count(LegacyProcessedMessage.id)))).scalar() or 0
+        posted = (await session.execute(
+            select(func.count(LegacyProcessedMessage.id)).where(LegacyProcessedMessage.status == "POSTED")
+        )).scalar() or 0
+        rejected = (await session.execute(
+            select(func.count(LegacyProcessedMessage.id)).where(LegacyProcessedMessage.status.like("REJECTED%"))
+        )).scalar() or 0
 
         return {
             "total_seen": total,

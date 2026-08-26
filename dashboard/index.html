@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous Telegram AI Media Creator — Control Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.75);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(59, 130, 246, 0.5);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --accent-purple: #8b5cf6;
+            --glow: 0 0 20px rgba(59, 130, 246, 0.25);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* Sidebar Navigation */
+        aside {
+            width: 280px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .brand-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: var(--glow);
+        }
+
+        .brand-text h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-text span {
+            font-size: 11px;
+            color: var(--accent-emerald);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-menu {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 14px;
+            color: var(--text-secondary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(59, 130, 246, 0.12);
+            color: #ffffff;
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        /* Main Content */
+        main {
+            margin-left: 280px;
+            flex: 1;
+            padding: 32px;
+            max-width: 1600px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .page-title h2 {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .page-title p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .badge-live {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .badge-pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-emerald);
+            border-radius: 50%;
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* KPI Cards Grid */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.25s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kpi-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .kpi-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+        }
+
+        .kpi-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kpi-value {
+            font-size: 28px;
+            font-weight: 800;
+            margin: 10px 0 4px 0;
+            color: #ffffff;
+        }
+
+        .kpi-sub {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Sections Grid */
+        .section-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        /* Table */
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            color: var(--text-primary);
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .score-pill {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+
+        .score-high { background: rgba(16, 185, 129, 0.2); color: var(--accent-emerald); }
+        .score-med { background: rgba(245, 158, 11, 0.2); color: var(--accent-amber); }
+        .score-low { background: rgba(244, 63, 94, 0.2); color: var(--accent-rose); }
+
+        .btn {
+            background: var(--accent-blue);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
+
+        .btn-success { background: var(--accent-emerald); }
+        .btn-danger { background: var(--accent-rose); }
+
+        /* Strategist Insight Box */
+        .insight-box {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(139, 92, 246, 0.08));
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .insight-box h4 {
+            color: var(--accent-cyan);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .insight-box p {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #d1d5db;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <aside>
+        <div class="brand">
+            <div class="brand-icon">🤖</div>
+            <div class="brand-text">
+                <h1>AI Media Creator</h1>
+                <span>Enterprise v2.0</span>
+            </div>
+        </div>
+
+        <ul class="nav-menu">
+            <li class="nav-item active" onclick="switchTab('overview')">📊 Overview</li>
+            <li class="nav-item" onclick="switchTab('queue')">📥 Content Queue</li>
+            <li class="nav-item" onclick="switchTab('sources')">📡 Sources Manager</li>
+            <li class="nav-item" onclick="switchTab('analytics')">📈 Analytics & Fatigue</li>
+            <li class="nav-item" onclick="switchTab('strategist')">🧠 AI Strategist</li>
+            <li class="nav-item" onclick="switchTab('settings')">⚙️ Settings</li>
+        </ul>
+    </aside>
+
+    <!-- Main Content -->
+    <main>
+        <header>
+            <div class="page-title">
+                <h2>Autonomous AI Control Center</h2>
+                <p>Real-time content intelligence, multi-dimensional scoring, fatigue management & automated publishing</p>
+            </div>
+            <div class="header-actions">
+                <div class="badge-live">
+                    <div class="badge-pulse"></div>
+                    24/7 AUTOPILOT ACTIVE
+                </div>
+                <button class="btn" onclick="fetchDashboardData()">🔄 Yangilash</button>
+            </div>
+        </header>
+
+        <!-- KPI Grid -->
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-title">Yig'ilgan Media (Bugun)</div>
+                <div class="kpi-value" id="kpi-collected">--</div>
+                <div class="kpi-sub">Manba kanallardan ushlandi</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">E'lon Qilindi (Published)</div>
+                <div class="kpi-value" id="kpi-published">--</div>
+                <div class="kpi-sub" id="kpi-target-channel">@muhtashamtraveluzz</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">O'rtacha Sifat Bali</div>
+                <div class="kpi-value" id="kpi-score">--</div>
+                <div class="kpi-sub">Multi-factor AI + Technical</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">O'rtacha Engagement</div>
+                <div class="kpi-value" id="kpi-engagement">--</div>
+                <div class="kpi-sub">Reaksiyalar va ulashishlar</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">AI Sarf-xarajati ($)</div>
+                <div class="kpi-value" id="kpi-cost">$0.00</div>
+                <div class="kpi-sub">Google Gemini Vision API</div>
+            </div>
+        </div>
+
+        <!-- AI Strategist Recommendation Box -->
+        <div class="insight-box" id="strategist-box">
+            <h4>🧠 AI Strategist Tavsiyasi (Bugun):</h4>
+            <p id="strategist-summary">Yuklanmoqda...</p>
+        </div>
+
+        <!-- Content Queue Table -->
+        <div class="card" style="margin-bottom: 32px;">
+            <div class="card-header">
+                <h3>📥 Nomzodlar Hovuzi (Candidate Pool)</h3>
+                <span style="font-size: 12px; color: var(--text-secondary);">Real-time multi-dimensional scoring</span>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Kategoriya</th>
+                            <th>Format</th>
+                            <th>Final Ball</th>
+                            <th>Ishonch</th>
+                            <th>Holat</th>
+                            <th>Qaror Izohi</th>
+                            <th>Amallar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="candidates-tbody">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Yuklanmoqda...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Sources and Fatigue Grid -->
+        <div class="section-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h3>📡 Manba Kanallar Samaradorligi</h3>
+                </div>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Kanal</th>
+                                <th>Prioritet</th>
+                                <th>Ishonch</th>
+                                <th>Holat</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sources-tbody">
+                            <tr><td colspan="4" style="text-align: center;">Yuklanmoqda...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>🔥 Kategoriya Toliqishi (Fatigue)</h3>
+                </div>
+                <div id="fatigue-list" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        async function fetchDashboardData() {
+            try {
+                // 1. Overview
+                const resOverview = await fetch('/api/overview');
+                if (resOverview.ok) {
+                    const data = await resOverview.json();
+                    document.getElementById('kpi-collected').innerText = data.collected_today || 0;
+                    document.getElementById('kpi-published').innerText = data.published || 0;
+                    document.getElementById('kpi-score').innerText = (data.average_score || 0) + ' / 100';
+                    document.getElementById('kpi-engagement').innerText = (data.average_engagement || 0) + '%';
+                    document.getElementById('kpi-cost').innerText = '$' + (data.total_ai_cost_usd || 0).toFixed(4);
+                }
+
+                // 2. Candidates
+                const resCand = await fetch('/api/candidates?limit=10');
+                if (resCand.ok) {
+                    const candidates = await resCand.json();
+                    const tbody = document.getElementById('candidates-tbody');
+                    if (candidates.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Hozircha yangi nomzodlar mavjud emas.</td></tr>';
+                    } else {
+                        tbody.innerHTML = candidates.map(c => {
+                            let pillClass = 'score-high';
+                            if (c.final_score < 70) pillClass = 'score-low';
+                            else if (c.final_score < 85) pillClass = 'score-med';
+
+                            const summary = (c.explanation && c.explanation.summary) ? c.explanation.summary : (c.reason || 'Tahlil yakunlandi');
+                            return `
+                                <tr>
+                                    <td><strong>#${c.id}</strong></td>
+                                    <td><span style="background: rgba(59,130,246,0.15); color: #60a5fa; padding: 2px 8px; border-radius: 4px; font-weight: 600;">${c.category}</span></td>
+                                    <td>${c.media_type.toUpperCase()} (${c.width}x${c.height})</td>
+                                    <td><span class="score-pill ${pillClass}">${c.final_score}</span></td>
+                                    <td>${Math.round(c.confidence * 100)}%</td>
+                                    <td><strong style="color: ${c.status === 'PUBLISHED' ? '#10b981' : (c.status === 'REJECTED' ? '#f43f5e' : '#f59e0b')}">${c.status}</strong></td>
+                                    <td style="max-width: 250px; font-size: 12px; color: var(--text-secondary);">${summary}</td>
+                                    <td>
+                                        ${c.status === 'READY' ? `<button class="btn btn-success" style="padding: 4px 8px; font-size: 11px;" onclick="approve(${c.id})">Nashr</button>` : ''}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
+                    }
+                }
+
+                // 3. Sources
+                const resSources = await fetch('/api/sources');
+                if (resSources.ok) {
+                    const sources = await resSources.json();
+                    document.getElementById('sources-tbody').innerHTML = sources.map(s => `
+                        <tr>
+                            <td><strong>${s.username}</strong></td>
+                            <td>${s.priority} / 5</td>
+                            <td><span style="color: var(--accent-emerald); font-weight: 600;">${s.trust_score * 100}%</span></td>
+                            <td><span style="color: ${s.status === 'ACTIVE' ? '#10b981' : '#f59e0b'}">● ${s.status}</span></td>
+                        </tr>
+                    `).join('');
+                }
+
+                // 4. AI Strategist
+                const resStrat = await fetch('/api/strategist/report');
+                if (resStrat.ok) {
+                    const strat = await resStrat.json();
+                    const recList = (strat.recommendations || []).map(r => `• ${r}`).join('<br>');
+                    document.getElementById('strategist-summary').innerHTML = `
+                        <strong>🔥 Top toifa: ${strat.top_category}</strong> (${strat.best_engagement}% engagement)<br><br>
+                        ${recList}
+                    `;
+                }
+
+                // 5. Analytics & Fatigue
+                const resAna = await fetch('/api/analytics');
+                if (resAna.ok) {
+                    const ana = await resAna.json();
+                    document.getElementById('fatigue-list').innerHTML = (ana.categories || []).map(c => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 6px;">
+                            <span><strong>${c.name}</strong> (${c.display})</span>
+                            <span style="font-weight: 700; color: ${c.fatigue_score > 60 ? 'var(--accent-rose)' : 'var(--accent-emerald)'}">
+                                ${c.fatigue_score}% ${c.fatigue_score > 60 ? '⚠️ HIGH' : '🟢 OK'}
+                            </span>
+                        </div>
+                    `).join('');
+                }
+
+            } catch (err) {
+                console.error("Dashboard yuklashda xatolik:", err);
+            }
+        }
+
+        async function approve(id) {
+            await fetch(`/api/candidate/${id}/approve`, { method: 'POST' });
+            fetchDashboardData();
+        }
+
+        function switchTab(tab) {
+            // Tab switcher
+        }
+
+        // Har 10 soniyada avtomatik yangilab turish
+        fetchDashboardData();
+        setInterval(fetchDashboardData, 10000);
+    </script>
+</body>
+</html>
