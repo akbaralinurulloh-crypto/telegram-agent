@@ -51,11 +51,11 @@ class ContentSimulator:
                 )).scalar_one_or_none()
 
                 category = analysis.category if analysis else "General"
-                fatigue_res = await fatigue_engine.calculate_fatigue_penalty(category)
+                fatigue_res = await fatigue_engine.get_category_fatigue(category)
 
                 # Baseline taxmin
                 base_views = int((cand.final_score or 75.0) * 180) # e.g. 90 score -> ~16,200 views
-                fatigue_multiplier = fatigue_res["multiplier"]
+                fatigue_multiplier = fatigue_res.get("penalty", 1.0)
                 adjusted_views = int(base_views * fatigue_multiplier)
 
                 base_eng = round(((cand.final_score or 75.0) / 100.0) * 8.5 * fatigue_multiplier, 2)

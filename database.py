@@ -66,16 +66,22 @@ async def save_processed_message(
 async def get_stats() -> dict:
     """Agent faoliyati statistikasi."""
     async with get_db_session() as session:
-        total = (await session.execute(select(func.count(LegacyProcessedMessage.id)))).scalar() or 0
-        posted = (await session.execute(
-            select(func.count(LegacyProcessedMessage.id)).where(LegacyProcessedMessage.status == "POSTED")
+        from app.models.schema import Post, ContentCandidate
+        total_cand = (await session.execute(select(func.count(ContentCandidate.id)))).scalar() or 0
+        total_posts = (await session.execute(select(func.count(Post.id)))).scalar() or 0
+        rejected_cand = (await session.execute(
+            select(func.count(ContentCandidate.id)).where(ContentCandidate.status == "REJECTED")
         )).scalar() or 0
-        rejected = (await session.execute(
-            select(func.count(LegacyProcessedMessage.id)).where(LegacyProcessedMessage.status.like("REJECTED%"))
+
+        legacy_total = (await session.execute(select(func.count(LegacyProcessedMessage.id)))).scalar() or 0
+        legacy_posted = (await session.execute(
+            select(func.count(LegacyProcessedMessage.id)).where(LegacyProcessedMessage.status == "POSTED")
         )).scalar() or 0
 
         return {
-            "total_seen": total,
-            "posted": posted,
-            "rejected": rejected
+            "total_candidates": total_cand,
+            "published_posts": total_posts,
+            "rejected_candidates": rejected_cand,
+            "legacy_processed": legacy_total,
+            "legacy_posted": legacy_posted
         }

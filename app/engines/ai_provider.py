@@ -98,10 +98,10 @@ class GeminiAIProvider(AIProvider):
 
         t0 = time.time()
         try:
-            if media_type == "photo":
+            if media_type == "photo" or media_path.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
                 img = Image.open(media_path)
                 contents.append(img)
-            elif media_type == "video":
+            elif media_type in ["video", "video_note"] or media_path.suffix.lower() in [".mp4", ".mov", ".mkv", ".avi"]:
                 logger.info(f"Video tahlil uchun Gemini serveriga yuklanmoqda: {media_path.name}")
                 uploaded_file = await client.aio.files.upload(file=str(media_path))
                 while getattr(uploaded_file, "state", None) and uploaded_file.state.name == "PROCESSING":
@@ -168,20 +168,53 @@ class GeminiAIProvider(AIProvider):
         full_prompt = f"{base_prompt}\n\n{safety_prompt}\n\nMedia tahlili xulosasi: {analysis_summary}"
 
         t0 = time.time()
-        response = await client.aio.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=MultiCaptionSchema,
-                temperature=0.6
-            )
-        )
-        latency = int((time.time() - t0) * 1000)
-        asyncio.create_task(self._track_cost(settings.GEMINI_MODEL, "CAPTION", latency))
+        models_to_try = [settings.GEMINI_MODEL] + settings.FALLBACK_MODELS
+        seen = set()
+        clean_models = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
 
-        data = json.loads(response.text)
-        return MultiCaptionSchema(**data)
+        response = None
+        last_err = None
+        used_model = clean_models[0]
+
+        for model_name in clean_models:
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=full_prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=MultiCaptionSchema,
+                        temperature=0.6
+                    )
+                )
+                if response and response.text:
+                    used_model = model_name
+                    break
+            except Exception as e:
+                last_err = e
+                logger.warning(f"Caption generatsiya model {model_name} xatosi: {e}")
+                await asyncio.sleep(1)
+
+        latency = int((time.time() - t0) * 1000)
+        asyncio.create_task(self._track_cost(used_model, "CAPTION", latency))
+
+        if response and response.text:
+            try:
+                data = json.loads(response.text)
+                return MultiCaptionSchema(**data)
+            except Exception as e:
+                logger.warning(f"AI Caption JSON parse xatosi: {e}")
+
+        # Fallback agar AI ishlamay qolsa
+        base_clean = original_caption[:200] if original_caption else "Alloh taolo barchamizga muqaddas ziyoratlarni nasib aylasin."
+        default_style = CaptionStyleSchema(
+            title="✨ Muhtasham Ziyorat",
+            body=base_clean,
+            question="Siz ham ushbu muqaddas maskanlarni ziyorat qilishni niyat qilganmisiz?",
+            hashtags="#Umra #Madina #Makka #Ziyorat",
+            full_caption=f"✨ **Muhtasham Ziyorat**\n\n{base_clean}\n\n🕌 @muhtashamtraveluzz\n#Umra #Madina #Makka"
+        )
+        return MultiCaptionSchema(informative=default_style, emotional=default_style, interactive=default_style)
 
 
 def get_ai_provider() -> AIProvider:

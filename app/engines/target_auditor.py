@@ -83,7 +83,7 @@ class TargetChannelAuditor:
                         metric = PostMetric(
                             post_id=existing_post.id,
                             views=views,
-                            reactions=reactions_cnt,
+                            reactions_count=reactions_cnt,
                             forwards=forwards,
                             engagement_rate=eng_rate
                         )

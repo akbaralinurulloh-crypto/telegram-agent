@@ -89,11 +89,11 @@ async def main():
     stats = await database.get_stats()
     logger.info(f"📊 Baza tayyor. Oldingi statistika: {stats}")
 
-    # 3. Asinxron ko'p bosqichli navbat tizimini boshlash
-    await queue_manager.start()
-
-    # 4. Telegram Collector va mijozini ishga tushirish
+    # 3. Telegram Collector va mijozini ishga tushirish (Handlerlar ulanishi uchun)
     await collector.initialize()
+
+    # 4. Asinxron ko'p bosqichli navbat tizimini boshlash
+    await queue_manager.start()
 
     # 5. Admin Telegram Bot buyruqlarini ulash
     register_admin_bot_handlers(collector.client)
@@ -116,10 +116,12 @@ async def main():
     # 7. Maqsadli kanalni (@muhtashamtraveluzz) chuqur skanerlab xotiraga olish va dublikatlar bazasini to'ldirish
     await target_auditor.scan_and_analyze_target_channel(collector.client, limit=100)
     await collector.sync_target_channel_history(limit=50)
-    await collector.sync_source_channels_history(limit=50)
 
-    # 8. Real-vaqt tinglovchisini boshlash (Faqat yangi postlar uchun)
+    # 8. Real-vaqt tinglovchisini boshlash
     await collector.start_listening()
+
+    # 9. Manba kanallardagi oldingi eng so'nggi postlarni ham tahlil qilib kanalga saralash
+    await collector.scan_and_process_recent_source_messages(limit=15)
 
     # 9. Davriy analitika va Avtomatik Hisobotchi (08:00, 13:00, 21:00) vazifalarini boshlash
     from app.engines.report_scheduler import report_scheduler

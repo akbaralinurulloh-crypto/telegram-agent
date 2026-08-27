@@ -286,19 +286,28 @@ class TelegramMediaCollector:
         if not media_type:
             return
 
-        # Tekshirish: avval ko'rilganmi
+        # Tekshirish: avval qayta ishlanganmi
         async with get_db_session() as session:
-            existing = (await session.execute(
-                select(SourceMessage)
+            existing_asset = (await session.execute(
+                select(MediaAsset)
+                .join(SourceMessage, MediaAsset.source_message_id == SourceMessage.id)
                 .join(Source, SourceMessage.source_id == Source.id)
                 .where(Source.username == source_channel, SourceMessage.source_message_id == message.id)
             )).scalar_one_or_none()
 
-            if existing:
+            if existing_asset:
                 return
 
         logger.info(f"📥 Yangi {media_type} topildi ({source_channel}:{message.id}). Yuklab olinmoqda...")
-        temp_file = await message.download_media(file=settings.DOWNLOAD_DIR)
+        try:
+            temp_file = await asyncio.wait_for(message.download_media(file=settings.DOWNLOAD_DIR), timeout=45.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"⚠️ Faylni yuklab olish vaqti tugadi (Timeout 45s): {source_channel}:{message.id}")
+            return
+        except Exception as dl_err:
+            logger.warning(f"⚠️ Faylni yuklab olishda xatolik: {dl_err}")
+            return
+
         if not temp_file or not os.path.exists(temp_file):
             return
 
@@ -312,102 +321,88 @@ class TelegramMediaCollector:
 
     async def sync_target_channel_history(self, limit: int = 50):
         """Maqsadli kanaldagi (@muhtashamtraveluzz) mavjud postlarni skanerlab, dublikatlar bazasiga kiritadi."""
-        logger.info(f"🔍 Maqsadli kanal (@muhtashamtraveluzz) tarixi skanerlanmoqda (Oxirgi {limit} ta post)...")
+        logger.info(f"🔍 Maqsadli kanal (@muhtashamtraveluzz) tarixi sinxronlanmoqda (Oxirgi {limit} ta post)...")
         try:
             target_entity = await self.client.get_entity(settings.TARGET_CHANNEL)
             messages = await self.client.get_messages(target_entity, limit=limit)
             synced_count = 0
-            for msg in messages:
-                if not msg.media:
-                    continue
-                media_type = "photo" if is_photo_media(msg.media) else ("video" if is_video_media(msg.media) else None)
-                if not media_type:
-                    continue
+            
+            async with get_db_session() as session:
+                s_target = (await session.execute(select(Source).where(Source.username == settings.TARGET_CHANNEL))).scalar_one_or_none()
+                if not s_target:
+                    s_target = Source(username=settings.TARGET_CHANNEL, title="Target Channel", status="ACTIVE")
+                    session.add(s_target)
+                    await session.flush()
 
-                async with get_db_session() as session:
-                    # Agar bu xabar bazada yo'q bo'lsa
+                for msg in messages:
+                    if not msg:
+                        continue
+                    
                     exists = (await session.execute(
                         select(Post).where(Post.target_message_id == msg.id)
                     )).scalar_one_or_none()
                     if exists:
                         continue
 
-                    # Media yuklab olib hashlarini olish
-                    temp_file = await msg.download_media(file=settings.DOWNLOAD_DIR)
-                    if temp_file and os.path.exists(temp_file):
-                        file_p = Path(temp_file)
-                        sha256 = duplicate_engine.calculate_sha256(file_p)
-                        phash_str, dhash_str = duplicate_engine.calculate_visual_hashes(file_p, media_type)
+                    media_type = "photo" if is_photo_media(msg.media) else ("video" if is_video_media(msg.media) else "text")
 
-                        # Asset va Post sifatida saqlash
-                        asset_obj = MediaAsset(
-                            storage_provider="local",
-                            storage_key=f"synced/{file_p.name}",
-                            local_path=str(file_p),
-                            mime_type=f"{media_type}/jpeg" if media_type == "photo" else f"{media_type}/mp4",
-                            file_size=file_p.stat().st_size if file_p.exists() else 0,
-                            sha256_hash=sha256,
-                            phash=phash_str,
-                            dhash=dhash_str
-                        )
-                        session.add(asset_obj)
-                        await session.flush()
+                    src_msg = SourceMessage(
+                        source_id=s_target.id,
+                        source_message_id=msg.id,
+                        media_type=media_type,
+                        raw_text=msg.raw_text or ""
+                    )
+                    session.add(src_msg)
+                    await session.flush()
 
-                        candidate = ContentCandidate(
-                            media_asset_id=asset_obj.id,
-                            status="PUBLISHED",
-                            content_score=90.0,
-                            final_score=90.0,
-                            confidence=1.0
-                        )
-                        session.add(candidate)
-                        await session.flush()
+                    asset_obj = MediaAsset(
+                        source_message_id=src_msg.id,
+                        storage_provider="local",
+                        storage_key=f"target_synced/{msg.id}",
+                        local_path="",
+                        mime_type=f"{media_type}/jpeg" if media_type == "photo" else f"{media_type}/mp4",
+                        file_size=getattr(getattr(msg, "media", None), "document", None).size if hasattr(getattr(msg, "media", None), "document") and getattr(msg.media, "document") else 0
+                    )
+                    session.add(asset_obj)
+                    await session.flush()
 
-                        post = Post(
-                            candidate_id=candidate.id,
-                            target_channel=settings.TARGET_CHANNEL,
-                            target_message_id=msg.id,
-                            caption_used=msg.raw_text or "",
-                            status="ACTIVE"
-                        )
-                        session.add(post)
-                        await session.commit()
-                        synced_count += 1
+                    candidate = ContentCandidate(
+                        media_asset_id=asset_obj.id,
+                        status="PUBLISHED",
+                        content_score=90.0,
+                        final_score=90.0,
+                        confidence=1.0
+                    )
+                    session.add(candidate)
+                    await session.flush()
 
-            logger.info(f"✅ Maqsadli kanaldan {synced_count} ta mavjud postlar dublikat bazasiga sinxronlashtirildi.")
+                    post = Post(
+                        candidate_id=candidate.id,
+                        target_channel=settings.TARGET_CHANNEL,
+                        target_message_id=msg.id,
+                        caption_used=msg.raw_text or "",
+                        status="ACTIVE"
+                    )
+                    session.add(post)
+                    synced_count += 1
+
+                await session.commit()
+            logger.info(f"✅ Maqsadli kanaldan {synced_count} ta mavjud postlar bazaga sinxronlashtirildi.")
         except Exception as e:
             logger.warning(f"Maqsadli kanal tarixini sinxronlashtirishda xatolik: {e}")
 
-    async def sync_source_channels_history(self, limit: int = 50):
-        """Manba kanallardagi eski postlarni 'KO'RILGAN' deb belgilaydi (Qayta repost qilinmasligi uchun)."""
-        logger.info(f"🔍 Manba kanallaridagi eski postlar ro'yxatga olinmoqda (Limit: {limit})...")
+    async def scan_and_process_recent_source_messages(self, limit: int = 15):
+        """Manba kanallardagi oxirgi postlarni skanerlab, tahlil va nashr konveyeriga jo'natadi."""
+        logger.info(f"🔍 Manba kanallaridagi oxirgi {limit} ta post tekshirilmoqda va saralanmoqda...")
         for source in settings.SOURCE_CHANNELS:
             try:
                 entity = await self.client.get_entity(source)
                 messages = await self.client.get_messages(entity, limit=limit)
-                async with get_db_session() as session:
-                    s_obj = (await session.execute(select(Source).where(Source.username == source))).scalar_one_or_none()
-                    if not s_obj:
-                        s_obj = Source(username=source, title=source, status="ACTIVE")
-                        session.add(s_obj)
-                        await session.flush()
-
-                    for msg in messages:
-                        if not msg.media:
-                            continue
-                        exists = (await session.execute(
-                            select(SourceMessage).where(SourceMessage.source_id == s_obj.id, SourceMessage.source_message_id == msg.id)
-                        )).scalar_one_or_none()
-                        if not exists:
-                            session.add(SourceMessage(
-                                source_id=s_obj.id,
-                                source_message_id=msg.id,
-                                media_type="media",
-                                raw_text=msg.raw_text or ""
-                            ))
-                    await session.commit()
+                for msg in reversed(messages):
+                    if msg.media:
+                        await self.ingest_message(msg, source)
             except Exception as e:
-                logger.warning(f"Manba kanal tarixini sinxronlashda xatolik ({source}): {e}")
+                logger.warning(f"Manba kanalni skaner qilishda xatolik ({source}): {e}")
 
     async def start_listening(self):
         source_entities = []

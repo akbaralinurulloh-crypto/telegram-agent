@@ -57,13 +57,15 @@ class AIStrategistEngine:
             ))
             await session.commit()
 
+            summary_text = "\n".join(f"• {r}" for r in recommendations)
             return {
                 "generated_at": datetime.utcnow().isoformat(),
                 "top_category": top_category,
                 "best_engagement": best_eng,
                 "categories": categories_summary,
                 "top_sources": sources_summary,
-                "recommendations": recommendations
+                "recommendations": recommendations,
+                "summary": summary_text
             }
 
 

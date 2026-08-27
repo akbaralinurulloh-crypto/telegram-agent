@@ -25,7 +25,7 @@ class CategoryFatigueEngine:
             recent_categories = (await session.execute(query)).scalars().all()
 
             if not recent_categories:
-                return {"fatigue_score": 0.0, "status": "LOW", "penalty": 1.0}
+                return {"category": category_name, "fatigue_score": 0.0, "status": "LOW", "penalty": 1.0, "recent_count": 0}
 
             # Oxirgi 10 postda necha marta chiqqani
             count = recent_categories.count(category_name)

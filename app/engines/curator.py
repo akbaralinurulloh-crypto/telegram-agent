@@ -5,6 +5,7 @@ from app.core.database import get_db_session
 from app.models.schema import ContentCandidate, MediaAsset, MediaAnalysis, SourceMessage, Source
 from app.engines.fatigue import fatigue_engine
 from app.engines.diversity import diversity_engine
+from app.core.config import settings
 from app.core.logging import logger
 
 
@@ -79,7 +80,8 @@ class ContentCurator:
             candidate.final_score = final_score
             candidate.ai_explanation = explanation
 
-            if final_score >= 75.0:
+            min_threshold = float(getattr(settings, "MIN_QUALITY_SCORE", 6) * 10)
+            if final_score >= min_threshold:
                 candidate.status = "READY"
             else:
                 candidate.status = "REJECTED"

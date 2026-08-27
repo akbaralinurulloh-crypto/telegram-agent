@@ -49,7 +49,7 @@ class MediaAsset(Base):
     __tablename__ = "media_assets"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    source_message_id = Column(Integer, ForeignKey("source_messages.id"), nullable=False, index=True)
+    source_message_id = Column(Integer, ForeignKey("source_messages.id"), nullable=True, index=True)
     storage_provider = Column(String(32), default="local")  # local, s3
     storage_key = Column(String(512), nullable=False)
     local_path = Column(String(512), default="")

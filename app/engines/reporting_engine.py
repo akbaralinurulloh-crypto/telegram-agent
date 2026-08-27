@@ -307,7 +307,7 @@ class ReportingEngine:
                     "9_caption_style": caption.style if caption else "INFORMATIVE",
                     "10_performance": {
                         "views": metric.views if metric else 0,
-                        "reactions": metric.reactions if metric else 0,
+                        "reactions": metric.reactions_count if metric else 0,
                         "forwards": metric.forwards if metric else 0,
                         "engagement_rate": metric.engagement_rate if metric else 0.0
                     }

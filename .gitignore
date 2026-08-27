@@ -12,6 +12,7 @@
 # Vaqtinchalik yuklab olingan media fayllar
 downloads/
 temp/
+storage_data/
 
 # Python kesh fayllari
 __pycache__/

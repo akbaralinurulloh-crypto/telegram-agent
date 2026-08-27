@@ -27,6 +27,8 @@ class UnifiedQueue:
         self._workers: List[asyncio.Task] = []
         self.retry_delays = [5, 15, 60, 300]  # sekundlar
 
+        self._active_worker_types: set = set()
+
     def get_queue(self, task_type: str) -> asyncio.Queue:
         if task_type not in self._queues:
             self._queues[task_type] = asyncio.Queue()
@@ -36,12 +38,19 @@ class UnifiedQueue:
         msg = TaskMessage(task_type=task_type, payload=payload, max_retries=max_retries)
         q = self.get_queue(task_type)
         await q.put(msg)
-        logger.debug(f"📥 [{task_type}] Navbatga qo'shildi: {payload.get('source_channel', '')} (Navbat uzunligi: {q.qsize()})")
+        logger.debug(f"📥 [{task_type}] Navbatga qo'shildi: {payload.get('source_name', payload.get('source_channel', ''))} (Navbat uzunligi: {q.qsize()})")
 
     def register_handler(self, task_type: str, handler: Callable[[TaskMessage], Awaitable[None]]):
         if task_type not in self._handlers:
             self._handlers[task_type] = []
         self._handlers[task_type].append(handler)
+        
+        # Agar navbat allaqachon ishlayotgan bo'lsa va bu task_type uchun worker yo'q bo'lsa, darhol worker boshlash
+        if self._is_running and task_type not in self._active_worker_types:
+            task = asyncio.create_task(self._worker_loop(task_type))
+            self._workers.append(task)
+            self._active_worker_types.add(task_type)
+            logger.info(f"⚡️ [{task_type}] Yangi worker dinamik ishga tushirildi.")
 
     async def _worker_loop(self, task_type: str):
         q = self.get_queue(task_type)
@@ -84,9 +93,10 @@ class UnifiedQueue:
     async def start(self):
         self._is_running = True
         for task_type in list(self._handlers.keys()):
-            # Har bir task_type uchun kamida 1 ta worker boshlash
-            task = asyncio.create_task(self._worker_loop(task_type))
-            self._workers.append(task)
+            if task_type not in self._active_worker_types:
+                task = asyncio.create_task(self._worker_loop(task_type))
+                self._workers.append(task)
+                self._active_worker_types.add(task_type)
         logger.info(f"🚀 Navbat tizimi ishga tushdi ({len(self._workers)} ta worker faol).")
 
     async def stop(self):

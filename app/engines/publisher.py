@@ -100,12 +100,18 @@ class TelegramPublisher:
                         )
                 except Exception as e:
                     logger.warning(f"Nashr qilishda xatolik ({e}), muqobil format bilan qayta urinilmoqda...")
-                    sent_msg = await client.send_file(
-                        target,
-                        file=str(file_path),
-                        caption=final_caption,
-                        parse_mode=None
-                    )
+                    try:
+                        sent_msg = await client.send_file(
+                            target,
+                            file=str(file_path),
+                            caption=final_caption,
+                            parse_mode=None
+                        )
+                    except Exception as e2:
+                        logger.error(f"❌ Telegram kanaliga post jo'natish butunlay muvaffaqiyatsiz bo'ldi ({target}): {e2}")
+                        candidate.status = "FAILED"
+                        await session.commit()
+                        return None
 
                 if sent_msg:
                     new_post = Post(
@@ -120,12 +126,13 @@ class TelegramPublisher:
                     candidate.status = "PUBLISHED"
 
                     # Orqaga moslik uchun Legacy jadvalga ham yozish
+                    score_val = int((candidate.final_score or 70.0) / 10)
                     session.add(LegacyProcessedMessage(
                         source_channel=target,
                         source_message_id=sent_msg.id,
                         media_type=asset.mime_type or "media",
                         status="POSTED",
-                        quality_score=int(candidate.final_score / 10),
+                        quality_score=score_val,
                         reason="Autonomous AI Media Creator tomonidan joylandi",
                         target_message_id=sent_msg.id,
                         enhanced_caption=selected_caption,

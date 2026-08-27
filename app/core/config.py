@@ -46,7 +46,7 @@ class Settings(BaseModel):
     # Google Gemini AI
     GEMINI_API_KEY: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     GEMINI_MODEL: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-3.6-flash"))
-    FALLBACK_MODELS: List[str] = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-3.7-flash"]
+    FALLBACK_MODELS: List[str] = ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-flash-latest"]
     
     # Mavzu va filtrlar
     CHANNEL_TOPIC: str = Field(default_factory=lambda: os.getenv(
