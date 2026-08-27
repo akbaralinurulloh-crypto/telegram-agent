@@ -51,6 +51,32 @@ class TelegramPublisher:
                     logger.error(f"Nashr qilish uchun fayl topilmadi: {file_path}")
                     return None
 
+                # 0. Telegramdagi Maqsadli Kanalning oxirgi 15 ta postini to'g'ridan-to'g'ri tekshirish
+                try:
+                    import difflib
+                    target_entity = await client.get_entity(target)
+                    recent_posts = await client.get_messages(target_entity, limit=15)
+                    for r_msg in recent_posts:
+                        # 1. Matn o'xshashligi tekshiruvi
+                        if r_msg.raw_text and selected_caption:
+                            sim = difflib.SequenceMatcher(None, r_msg.raw_text[:120].lower(), selected_caption[:120].lower()).ratio()
+                            if sim > 0.70:
+                                logger.warning(f"⛔️ [Publisher] Maqsadli kanalda (@muhtashamtraveluzz) juda o'xshash post allaqachon mavjud! (O'xshashlik: {sim*100:.1f}%). Bekor qilindi.")
+                                candidate.status = "DUPLICATE_SUPPRESSED"
+                                await session.commit()
+                                return r_msg.id
+
+                        # 2. Fayl hajmi va davomiyligi bo'yicha tekshirish
+                        if r_msg.media and hasattr(r_msg.media, "document") and r_msg.media.document:
+                            r_size = r_msg.media.document.size
+                            if asset.file_size and abs(r_size - asset.file_size) < 1024:
+                                logger.warning(f"⛔️ [Publisher] Maqsadli kanalda (@muhtashamtraveluzz) aynan shu media fayl allaqachon mavjud! Bekor qilindi.")
+                                candidate.status = "DUPLICATE_SUPPRESSED"
+                                await session.commit()
+                                return r_msg.id
+                except Exception as e:
+                    logger.debug(f"Maqsadli kanalni tekshirishda xatolik: {e}")
+
                 logger.info(f"🚀 Kanalga joylanmoqda ({target}): Candidate ID {candidate_id}...")
 
                 sent_msg = None
