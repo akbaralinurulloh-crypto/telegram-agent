@@ -24,3 +24,5 @@ services:
         value: "6"
       - key: CHANNEL_TOPIC
         sync: false
+      - key: GOOGLE_SHEETS_WEBHOOK_URL
+        sync: false

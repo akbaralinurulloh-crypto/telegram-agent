@@ -47,7 +47,7 @@ class GoogleSheetsIntegration:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 response = await client.post(webhook, json=payload)
                 if response.status_code in [200, 302]:
                     logger.info(f"📊 [Google Sheets] Yangi qator muvaffaqiyatli qo'shildi: {payload['source_channel']}:{payload['source_message_id']} ({payload['status']})")
