@@ -101,7 +101,7 @@ class TelegramMediaCollector:
         else:
             tech_quality = quality_engine.evaluate_video(file_path)
 
-        await event_bus.emit("QUALITY_EVALUATED", entity_id=source_msg_id, source=source_name, metadata={"score": tech_quality.score, "is_valid": tech_quality.is_valid})
+        await event_bus.emit("QUALITY_EVALUATED", entity_id=source_msg_id, source=source_name, metadata={"score": tech_quality.score, "is_hd": tech_quality.is_hd, "issues": tech_quality.issues})
 
         # 1.5. Maqsadli kanalda (@muhtashamtraveluzz) bor-yo'qligini tekshirish
         from app.engines.target_auditor import target_auditor
