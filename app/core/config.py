@@ -38,7 +38,7 @@ class Settings(BaseModel):
     # Kanallar
     SOURCE_CHANNELS: List[str] = Field(default_factory=lambda: [
         clean_channel_username(ch) for ch in os.getenv(
-            "SOURCE_CHANNELS", "@MuhtashamUmra, @Muhtasham_travel_Umra_sari, @muhtashamtravel"
+            "SOURCE_CHANNELS", "@MuhtashamUmra, @Muhtasham_travel_Umra_sari, @muhtashamtravel, @nurlisafar"
         ).split(",") if ch.strip()
     ])
     TARGET_CHANNEL: str = Field(default_factory=lambda: clean_channel_username(os.getenv("TARGET_CHANNEL", "@muhtashamtraveluzz")))
