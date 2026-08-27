@@ -1,5 +1,6 @@
 import shutil
 from pathlib import Path
+from typing import Optional
 from app.core.config import settings
 from app.core.logging import logger
 from app.storage.base import StorageProvider

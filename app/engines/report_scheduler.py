@@ -46,13 +46,19 @@ class ReportScheduler:
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        delays = [2, 5, 15]
+        delays = [1, 3, 5]
         for attempt in range(len(delays)):
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 200:
                         return True
+                    elif resp.status_code == 400 and "can't parse" in resp.text:
+                        # Markdown xatosi bo'lsa oddiy matn sifatida qayta yuborish
+                        payload.pop("parse_mode", None)
+                        retry_resp = await client.post(url, json=payload)
+                        if retry_resp.status_code == 200:
+                            return True
                     else:
                         logger.warning(f"Telegram API xatolik ({resp.status_code}): {resp.text}")
             except Exception as e:

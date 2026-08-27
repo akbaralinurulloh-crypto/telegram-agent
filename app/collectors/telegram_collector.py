@@ -19,7 +19,7 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.core.database import get_db_session
 from app.core.queue import queue_manager, TaskMessage
-from app.models.schema import Source, SourceMessage, MediaAsset, ContentCandidate, MediaAnalysis
+from app.models.schema import Source, SourceMessage, MediaAsset, ContentCandidate, MediaAnalysis, Post
 from app.storage import get_storage_provider
 from app.engines.quality import quality_engine
 from app.engines.duplicate import duplicate_engine
