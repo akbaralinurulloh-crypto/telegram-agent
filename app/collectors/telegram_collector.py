@@ -34,6 +34,15 @@ from app.engines.media_creator import media_creator
 from app.integrations.google_sheets import google_sheets
 
 
+def is_round_video_media(media) -> bool:
+    """Telegram dumaloq video xabari (Video Note / Round Video) ekanligini aniqlaydi."""
+    if isinstance(media, MessageMediaDocument) and media.document:
+        doc = media.document
+        if any(isinstance(attr, DocumentAttributeVideo) and getattr(attr, "round_message", False) for attr in (doc.attributes or [])):
+            return True
+    return False
+
+
 def is_video_media(media) -> bool:
     if isinstance(media, MessageMediaDocument) and media.document:
         doc = media.document
@@ -218,13 +227,18 @@ class TelegramMediaCollector:
             }))
             return
 
-        # 9. Matnlar yaratish
-        selected_style, selected_caption = await caption_engine.create_and_store_captions(
-            candidate_id=candidate_id,
-            category=analysis.category,
-            original_caption=original_caption,
-            analysis_summary=analysis.reason
-        )
+        # 9. Matnlar yaratish (Dumaloq video bo'lsa matn yozilmaydi)
+        if media_type == "video_note":
+            selected_style = "ROUND_CLEAN"
+            selected_caption = ""
+            logger.info(f"⭕️ [Pipeline] Dumaloq video (Video Note) aniqlandi. Matnsiz, toza shaklda e'lon qilinadi.")
+        else:
+            selected_style, selected_caption = await caption_engine.create_and_store_captions(
+                candidate_id=candidate_id,
+                category=analysis.category,
+                original_caption=original_caption,
+                analysis_summary=analysis.reason
+            )
 
         # 10. AI Prediction
         await predictor_engine.predict_for_candidate(candidate_id)
@@ -260,7 +274,15 @@ class TelegramMediaCollector:
         if not message.media:
             return
 
-        media_type = "photo" if is_photo_media(message.media) else ("video" if is_video_media(message.media) else None)
+        if is_round_video_media(message.media):
+            media_type = "video_note"
+        elif is_photo_media(message.media):
+            media_type = "photo"
+        elif is_video_media(message.media):
+            media_type = "video"
+        else:
+            media_type = None
+
         if not media_type:
             return
 

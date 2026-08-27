@@ -79,21 +79,31 @@ class TelegramPublisher:
 
                 logger.info(f"🚀 Kanalga joylanmoqda ({target}): Candidate ID {candidate_id}...")
 
+                is_round = "note" in str(asset.mime_type or "").lower() or (not selected_caption)
+                final_caption = None if is_round or not selected_caption else selected_caption
+
                 sent_msg = None
                 try:
-                    # Markdown formatida yuborish
-                    sent_msg = await client.send_file(
-                        target,
-                        file=str(file_path),
-                        caption=selected_caption,
-                        parse_mode="markdown"
-                    )
+                    if is_round:
+                        logger.info("⭕️ [Publisher] Dumaloq video (Video Note) matnsiz toza shaklda Telegramga chiqarilmoqda...")
+                        sent_msg = await client.send_file(
+                            target,
+                            file=str(file_path),
+                            video_note=True
+                        )
+                    else:
+                        sent_msg = await client.send_file(
+                            target,
+                            file=str(file_path),
+                            caption=final_caption,
+                            parse_mode="markdown"
+                        )
                 except Exception as e:
-                    logger.warning(f"Markdown formatida xatolik ({e}), oddiy matn bilan qayta urinilmoqda...")
+                    logger.warning(f"Nashr qilishda xatolik ({e}), muqobil format bilan qayta urinilmoqda...")
                     sent_msg = await client.send_file(
                         target,
                         file=str(file_path),
-                        caption=selected_caption,
+                        caption=final_caption,
                         parse_mode=None
                     )
 
