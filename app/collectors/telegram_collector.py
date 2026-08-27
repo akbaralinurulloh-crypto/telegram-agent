@@ -98,7 +98,18 @@ class TelegramMediaCollector:
         else:
             tech_quality = quality_engine.evaluate_video(file_path)
 
-        # 2. Dublikatni tekshirish
+        # 1.5. Maqsadli kanalda (@muhtashamtraveluzz) bor-yo'qligini tekshirish
+        from app.engines.target_auditor import target_auditor
+        already_in_target, target_reason = target_auditor.is_content_already_posted(
+            caption=original_caption,
+            file_size=file_path.stat().st_size if file_path.exists() else 0,
+            duration=tech_quality.duration
+        )
+        if already_in_target:
+            logger.info(f"⛔️ [Pipeline] Kontent maqsadli kanalda (@muhtashamtraveluzz) allaqachon mavjud! ({target_reason}). Bekor qilindi.")
+            return
+
+        # 2. Dublikatni tekshirish (Bazadagi barcha oldingi media bilan)
         is_dup, dup_id, match_type, sim_score = await duplicate_engine.check_duplicate(file_path, media_type)
         if is_dup:
             logger.info(f"⏭ [Pipeline] Dublikat aniqlandi ({match_type}, sim: {sim_score}). Tashlab ketilmoqda.")

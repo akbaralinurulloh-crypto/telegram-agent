@@ -59,12 +59,16 @@ async def scan_recent_messages(limit: int = 50):
             logger.error(f"Kanalni skaner qilishda xatolik ({source}): {e}")
 
 
+from app.engines.target_auditor import target_auditor
+
+
 async def periodic_analytics_loop():
-    """Har 30 daqiqada postlar tahlilini (views, reactions, engagement) yangilash."""
+    """Har 10 daqiqada maqsadli kanalni chuqur tahlil qilish va statistikani yangilash."""
     while True:
         try:
-            await asyncio.sleep(1800)  # 30 daqiqa
-            logger.info("📊 Davriy post statistikasi (Analytics) yig'ilmoqda...")
+            await asyncio.sleep(600)  # 10 daqiqa
+            logger.info("🔍 [Auditor] Maqsadli kanal (@muhtashamtraveluzz) davriy chuqur tahlil qilinmoqda...")
+            await target_auditor.scan_and_analyze_target_channel(collector.client, limit=50)
             await analytics_engine.collect_post_metrics(collector.client, limit=20)
         except asyncio.CancelledError:
             break
@@ -109,7 +113,8 @@ async def main():
     except Exception as e:
         logger.error(f"❌ Maqsadli kanalga ulanib bo'lmadi ({settings.TARGET_CHANNEL}): {e}")
 
-    # 7. Mavjud postlarni dublikat bazasiga sinxronlash (Server qayta yoqilganda eski postlar takror chiqmasligi uchun)
+    # 7. Maqsadli kanalni (@muhtashamtraveluzz) chuqur skanerlab xotiraga olish va dublikatlar bazasini to'ldirish
+    await target_auditor.scan_and_analyze_target_channel(collector.client, limit=100)
     await collector.sync_target_channel_history(limit=50)
     await collector.sync_source_channels_history(limit=50)
 
