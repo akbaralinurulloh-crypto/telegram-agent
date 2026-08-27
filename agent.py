@@ -121,8 +121,13 @@ async def main():
     # 8. Real-vaqt tinglovchisini boshlash (Faqat yangi postlar uchun)
     await collector.start_listening()
 
-    # 9. Davriy analitika vazifasini boshlash
+    # 9. Davriy analitika va Avtomatik Hisobotchi (08:00, 13:00, 21:00) vazifalarini boshlash
+    from app.engines.report_scheduler import report_scheduler
+    from app.bot.admin_bot import bot_polling_service
+    
     analytics_task = asyncio.create_task(periodic_analytics_loop())
+    report_task = asyncio.create_task(report_scheduler.start())
+    bot_task = asyncio.create_task(bot_polling_service.start())
 
     logger.info("🟢 TIZIM TO'LIQ ISHGA TUSHDI VA 24/7 AVTOPILOT REJIMIDA FAOL!")
     
@@ -131,6 +136,8 @@ async def main():
     finally:
         await queue_manager.stop()
         analytics_task.cancel()
+        report_task.cancel()
+        bot_task.cancel()
         web_task.cancel()
 
 

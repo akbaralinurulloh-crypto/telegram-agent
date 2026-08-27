@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from typing import Optional, List, Any
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON
+    Column, Integer, BigInteger, String, Float, Boolean, DateTime, Text, ForeignKey, JSON
 )
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -380,3 +380,55 @@ class SimulationScenario(Base):
     predicted_engagement = Column(Float, default=0.0)
     recommendation = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Report(Base):
+    """Admin uchun yaratilgan hisobotlar arxivi va holati."""
+    __tablename__ = "reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_type = Column(String(32), nullable=False) # MORNING, MIDDAY, EVENING, MANUAL
+    report_date = Column(String(32), nullable=False) # YYYY-MM-DD
+    idempotency_key = Column(String(128), unique=True, index=True)
+    timezone = Column(String(64), default="Asia/Tashkent")
+    summary_text = Column(Text, nullable=False)
+    status = Column(String(32), default="GENERATED") # GENERATED, SENT, FAILED
+    generation_time_ms = Column(Integer, default=0)
+    sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReportSnapshot(Base):
+    """Hisobot yuborilgan vaqtdagi xom statistik ma'lumotlar snapshot'i."""
+    __tablename__ = "report_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=False, index=True)
+    data_snapshot = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Alert(Base):
+    """Tezkor tizim va kontent ogohlantirishlari."""
+    __tablename__ = "alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    severity = Column(String(16), default="WARNING") # INFO, WARNING, CRITICAL
+    alert_type = Column(String(64), nullable=False) # TELEGRAM_DOWN, DUPLICATE_SPIKE, AI_COST_SPIKE, PUBLISH_ERROR
+    message = Column(Text, nullable=False)
+    details = Column(JSON, default=dict)
+    is_resolved = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ReportDeliveryLog(Base):
+    """Hisobotlarni Telegram orqali adminga yetkazish jurnali."""
+    __tablename__ = "report_delivery_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=False)
+    recipient_id = Column(BigInteger, nullable=False)
+    status = Column(String(32), default="SENT") # SENT, FAILED, RETRYING
+    attempt_count = Column(Integer, default=1)
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow)

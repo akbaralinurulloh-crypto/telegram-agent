@@ -307,3 +307,49 @@ async def export_csv_report():
             writer.writerow([p.id, p.candidate_id, p.target_channel, p.target_message_id, p.status, p.published_at.isoformat() if p.published_at else "", (p.caption_used or "")[:100]])
 
         return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=posts_report.csv"})
+
+
+@router.get("/reports/history")
+async def get_reports_history():
+    """Yaratilgan barcha hisobotlar ro'yxati."""
+    from app.models.schema import Report
+    async with get_db_session() as session:
+        reports = (await session.execute(select(Report).order_by(desc(Report.created_at)).limit(20))).scalars().all()
+        return [
+            {
+                "id": r.id,
+                "type": r.report_type,
+                "date": r.report_date,
+                "timezone": r.timezone,
+                "status": r.status,
+                "sent_at": r.sent_at.isoformat() if r.sent_at else None,
+                "summary": r.summary_text[:120] + "..." if len(r.summary_text) > 120 else r.summary_text
+            }
+            for r in reports
+        ]
+
+
+@router.get("/trace/{post_id}")
+async def get_trace(post_id: int):
+    """Postning Source -> Target to'liq manba zanjiri."""
+    from app.engines.reporting_engine import reporting_engine
+    return await reporting_engine.get_content_traceability(post_id)
+
+
+@router.get("/alerts")
+async def get_alerts():
+    """Tizimdagi faol ogohlantirishlar."""
+    from app.models.schema import Alert
+    async with get_db_session() as session:
+        alerts = (await session.execute(select(Alert).order_by(desc(Alert.created_at)).limit(20))).scalars().all()
+        return [
+            {
+                "id": a.id,
+                "severity": a.severity,
+                "type": a.alert_type,
+                "message": a.message,
+                "resolved": a.is_resolved,
+                "created_at": a.created_at.isoformat() if a.created_at else None
+            }
+            for a in alerts
+        ]

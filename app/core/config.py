@@ -77,6 +77,19 @@ class Settings(BaseModel):
     # Google Sheets Webhook integratsiyasi
     GOOGLE_SHEETS_WEBHOOK_URL: str = Field(default_factory=lambda: os.getenv("GOOGLE_SHEETS_WEBHOOK_URL", ""))
     
+    # Admin Telegram Bot va Xabarnomalar
+    TELEGRAM_BOT_TOKEN: str = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
+    ADMIN_TELEGRAM_IDS: List[int] = Field(default_factory=lambda: [
+        int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "7558601798").split(",") if x.strip().isdigit()
+    ])
+    
+    # Hisobot vaqtlari (Asia/Tashkent)
+    REPORT_TIMEZONE: str = Field(default_factory=lambda: os.getenv("REPORT_TIMEZONE", "Asia/Tashkent"))
+    MORNING_REPORT_TIME: str = Field(default_factory=lambda: os.getenv("MORNING_REPORT_TIME", "08:00"))
+    MIDDAY_REPORT_TIME: str = Field(default_factory=lambda: os.getenv("MIDDAY_REPORT_TIME", "13:00"))
+    EVENING_REPORT_TIME: str = Field(default_factory=lambda: os.getenv("EVENING_REPORT_TIME", "21:00"))
+    SEND_MISSED_REPORTS: bool = Field(default_factory=lambda: os.getenv("SEND_MISSED_REPORTS", "false").lower() == "true")
+
     # Smart Scheduler sozlamalari
     MIN_POST_INTERVAL_MINUTES: int = Field(default_factory=lambda: int(os.getenv("MIN_POST_INTERVAL_MINUTES", "45")))
     MAX_DAILY_POSTS: int = Field(default_factory=lambda: int(os.getenv("MAX_DAILY_POSTS", "12")))
