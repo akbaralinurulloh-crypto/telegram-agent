@@ -106,7 +106,7 @@ class TelegramMediaCollector:
 
         # 3. Storage ga saqlash
         sha256 = duplicate_engine.calculate_sha256(file_path)
-        phash_str, dhash_str = duplicate_engine.calculate_visual_hashes(file_path) if media_type == "photo" else (None, None)
+        phash_str, dhash_str = duplicate_engine.calculate_visual_hashes(file_path, media_type)
         dest_key = f"{media_type}s/{sha256[:16]}_{file_path.name}"
         stored_key = await self.storage.save(file_path, dest_key)
 
