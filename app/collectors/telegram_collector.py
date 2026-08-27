@@ -92,11 +92,16 @@ class TelegramMediaCollector:
 
         logger.info(f"⚡️ [Pipeline] Nomzod media to'liq tahlil qilinmoqda: {source_name}:{source_msg_id}")
 
+        from app.core.events import event_bus
+        await event_bus.emit("MEDIA_DOWNLOADED", entity_id=source_msg_id, source=source_name, metadata={"media_type": media_type})
+
         # 1. Texnik sifatni tekshirish
         if media_type == "photo":
             tech_quality = quality_engine.evaluate_photo(file_path)
         else:
             tech_quality = quality_engine.evaluate_video(file_path)
+
+        await event_bus.emit("QUALITY_EVALUATED", entity_id=source_msg_id, source=source_name, metadata={"score": tech_quality.score, "is_valid": tech_quality.is_valid})
 
         # 1.5. Maqsadli kanalda (@muhtashamtraveluzz) bor-yo'qligini tekshirish
         from app.engines.target_auditor import target_auditor
@@ -107,12 +112,14 @@ class TelegramMediaCollector:
         )
         if already_in_target:
             logger.info(f"⛔️ [Pipeline] Kontent maqsadli kanalda (@muhtashamtraveluzz) allaqachon mavjud! ({target_reason}). Bekor qilindi.")
+            await event_bus.emit("DUPLICATE_BLOCKED", entity_id=source_msg_id, source=source_name, metadata={"reason": target_reason})
             return
 
         # 2. Dublikatni tekshirish (Bazadagi barcha oldingi media bilan)
         is_dup, dup_id, match_type, sim_score = await duplicate_engine.check_duplicate(file_path, media_type)
         if is_dup:
             logger.info(f"⏭ [Pipeline] Dublikat aniqlandi ({match_type}, sim: {sim_score}). Tashlab ketilmoqda.")
+            await event_bus.emit("DUPLICATE_BLOCKED", entity_id=source_msg_id, source=source_name, metadata={"sim_score": sim_score, "match_type": match_type})
             return
 
         # 3. Storage ga saqlash

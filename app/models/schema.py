@@ -432,3 +432,15 @@ class ReportDeliveryLog(Base):
     attempt_count = Column(Integer, default=1)
     error_message = Column(Text, nullable=True)
     sent_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AnalyticsEvent(Base):
+    """Barcha tizim hodisalari va konveyer qadamlarining to'liq auditi (Event Sourcing)."""
+    __tablename__ = "analytics_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_type = Column(String(64), nullable=False, index=True) # MEDIA_COLLECTED, DUPLICATE_BLOCKED, QUALITY_PASSED, etc.
+    entity_id = Column(String(64), nullable=True)
+    source = Column(String(128), nullable=True)
+    metadata_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

@@ -259,13 +259,23 @@
                 <div class="card-header">
                     <h3>⚡️ 12-Bosqichli Avtonom Pipeline Holati</h3>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
                     <div class="sim-box"><strong>1. Ingestion</strong><span style="color: var(--accent-emerald);">● ONLINE</span></div>
                     <div class="sim-box"><strong>2. Quality Gate</strong><span style="color: var(--accent-emerald);">● ACTIVE</span></div>
                     <div class="sim-box"><strong>3. Duplicate 5-Frame</strong><span style="color: var(--accent-emerald);">● PROTECTED</span></div>
                     <div class="sim-box"><strong>4. Gemini Vision</strong><span style="color: var(--accent-emerald);">● READY</span></div>
                     <div class="sim-box"><strong>5. Content DNA</strong><span style="color: var(--accent-emerald);">● SYNCHRONIZED</span></div>
                     <div class="sim-box"><strong>6. Publisher Lock</strong><span style="color: var(--accent-emerald);">● ARMED</span></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>📡 Jonli Tizim Hodisalari Oqimi (Live Event Bus)</h3>
+                    <span style="font-size: 11px; color: var(--accent-cyan); background: rgba(56, 189, 248, 0.1); padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(56, 189, 248, 0.3);">● Real-Time Feed</span>
+                </div>
+                <div id="live-events-feed" style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; padding-right: 5px;">
+                    <div style="color: var(--text-muted); font-size: 12px;">Hodisalar yuklanmoqda...</div>
                 </div>
             </div>
         </div>
@@ -439,6 +449,34 @@
                 if (resStrat.ok) {
                     const strat = await resStrat.json();
                     document.getElementById('strategist-summary').innerText = strat.summary || 'Kanal holati barqaror.';
+                }
+
+                // 5. Live Events Feed
+                const resEvents = await fetch('/api/events/live?limit=20');
+                if (resEvents.ok) {
+                    const events = await resEvents.json();
+                    const feed = document.getElementById('live-events-feed');
+                    if (events && events.length > 0) {
+                        feed.innerHTML = events.slice().reverse().map(ev => {
+                            const timeStr = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '';
+                            let badgeColor = 'var(--accent-cyan)';
+                            if (ev.event_type.includes('PUBLISH')) badgeColor = 'var(--accent-emerald)';
+                            if (ev.event_type.includes('BLOCKED') || ev.event_type.includes('REJECT')) badgeColor = 'var(--accent-rose)';
+                            if (ev.event_type.includes('QUALITY')) badgeColor = 'var(--accent-amber)';
+
+                            return `
+                                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border-left: 3px solid ${badgeColor};">
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <span style="font-size: 10px; color: ${badgeColor}; font-weight: 700; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">${ev.event_type}</span>
+                                        <span style="font-size: 12px; color: var(--text-primary);">${ev.source ? '<strong>' + ev.source + '</strong>: ' : ''} Entity #${ev.entity_id || 'system'}</span>
+                                    </div>
+                                    <span style="font-size: 11px; color: var(--text-muted);">${timeStr}</span>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        feed.innerHTML = '<div style="color: var(--text-muted); font-size: 12px;">Hozircha yangi hodisalar yo\'q.</div>';
+                    }
                 }
 
             } catch (e) {

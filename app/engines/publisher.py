@@ -123,6 +123,10 @@ class TelegramPublisher:
                     ))
 
                     await session.commit()
+                    
+                    from app.core.events import event_bus
+                    await event_bus.emit("POST_PUBLISHED", entity_id=new_post.id, source=target, metadata={"target_msg_id": sent_msg.id, "candidate_id": candidate_id})
+
                     logger.info(f"🎉 Post muvaffaqiyatli kanalga chiqdi! (Target Msg ID: {sent_msg.id})")
                     return sent_msg.id
 

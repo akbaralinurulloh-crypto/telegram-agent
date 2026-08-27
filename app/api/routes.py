@@ -353,3 +353,10 @@ async def get_alerts():
             }
             for a in alerts
         ]
+
+
+@router.get("/events/live")
+async def get_live_events(limit: int = 25):
+    """Real-vaqtda tizim konveyeri hodisalari oqimi."""
+    from app.core.events import event_bus
+    return event_bus.get_recent_events(limit=limit)
