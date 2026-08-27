@@ -80,7 +80,7 @@ class Settings(BaseModel):
     # Admin Telegram Bot va Xabarnomalar
     TELEGRAM_BOT_TOKEN: str = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
     ADMIN_TELEGRAM_IDS: List[int] = Field(default_factory=lambda: [
-        int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "7558601798").split(",") if x.strip().isdigit()
+        int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "240409213, 7558601798").split(",") if x.strip().isdigit()
     ])
     
     # Hisobot vaqtlari (Asia/Tashkent)

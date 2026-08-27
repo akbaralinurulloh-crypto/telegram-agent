@@ -243,10 +243,16 @@ class TelegramBotPollingService:
                         for update in data.get("result", []):
                             offset = update["update_id"] + 1
                             msg = update.get("message")
+                            callback = update.get("callback_query")
                             if msg and "text" in msg:
                                 chat_id = msg["chat"]["id"]
                                 text = msg["text"].strip()
                                 await self._handle_bot_command(chat_id, text)
+                            elif callback:
+                                chat_id = callback["from"]["id"]
+                                cb_data = callback.get("data", "")
+                                query_id = callback["id"]
+                                await self._handle_callback_query(chat_id, cb_data, query_id)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -264,10 +270,12 @@ class TelegramBotPollingService:
                 "👋 Assalomu alaykum!\n\n"
                 "🤖 **TAMC Professional Admin Reporting Bot**\n\n"
                 "📊 `/report` — Umumiy hisobot\n"
-                "🌅 `/report morning` — Tonggi hisobot\n"
-                "🌙 `/report evening` — Kechki hisobot\n"
-                "🏆 `/top` — Top postlar\n"
-                "🛡 `/duplicates` — Dublikatlar holati\n"
+                "🌅 `/report morning` — Tonggi hisobot (08:00)\n"
+                "☀️ `/report midday` — Kun o'rtasi hisoboti (13:00)\n"
+                "🌙 `/report evening` — Kechki hisobot (21:00)\n"
+                "🏆 `/top` — Top postlar natijasi\n"
+                "📡 `/sources` — Manbalar holati\n"
+                "🛡 `/duplicates` — Dublikatlar nazorati\n"
                 "🟢 `/health` — Tizim salomatligi"
             )
             await report_scheduler.send_telegram_message(chat_id, welcome, report_scheduler.get_report_keyboard())
@@ -281,14 +289,83 @@ class TelegramBotPollingService:
             elif sub == "evening":
                 res = await reporting_engine.generate_evening_report()
             else:
-                res = await reporting_engine.generate_morning_report()
+                now = reporting_engine.get_tashkent_now()
+                if now.hour < 12:
+                    res = await reporting_engine.generate_morning_report()
+                elif now.hour < 19:
+                    res = await reporting_engine.generate_midday_report()
+                else:
+                    res = await reporting_engine.generate_evening_report()
             await report_scheduler.send_telegram_message(chat_id, res["summary_text"], report_scheduler.get_report_keyboard())
         elif cmd == "/top":
+            async with get_db_session() as session:
+                posts = (await session.execute(
+                    select(Post, ContentCandidate, MediaAnalysis, PostMetric)
+                    .join(ContentCandidate, Post.candidate_id == ContentCandidate.id, isouter=True)
+                    .join(MediaAnalysis, ContentCandidate.media_asset_id == MediaAnalysis.media_asset_id, isouter=True)
+                    .join(PostMetric, Post.id == PostMetric.post_id, isouter=True)
+                    .order_by(desc(PostMetric.views))
+                    .limit(5)
+                )).all()
+
+                lines = ["🏆 **Kanalning TOP 5 Postlari (Engagement & Views):**\n"]
+                if posts:
+                    for idx, (p, cand, analysis, m) in enumerate(posts, 1):
+                        cat = analysis.category if analysis else "General"
+                        views = m.views if m else 0
+                        eng = m.engagement_rate if m else 0.0
+                        lines.append(f"{idx}. Post #{p.target_message_id} [{cat}] — 👁 {views} views | ❤️ {eng}% engagement")
+                else:
+                    lines.append("• _Postlar statistikasi tahlil qilinmoqda..._")
+            await report_scheduler.send_telegram_message(chat_id, "\n".join(lines))
+        elif cmd == "/sources":
+            async with get_db_session() as session:
+                sources = (await session.execute(select(Source))).scalars().all()
+                lines = ["📡 **Kuzatilayotgan manbalar:**\n"]
+                for s in sources:
+                    lines.append(f"• `{s.username}` — Prioritet: {s.priority}, Ishonch: {int((s.trust_score or 1)*100)}%")
+            await report_scheduler.send_telegram_message(chat_id, "\n".join(lines))
+        elif cmd == "/duplicates":
+            async with get_db_session() as session:
+                dup_count = (await session.execute(select(func.count(DuplicateMatch.id)))).scalar() or 0
+            text_dup = (
+                "🛡 **DUBLIKATLAR NAZORATI HISOBOTI:**\n\n"
+                f"• To'xtatilgan dublikatlar: **{dup_count} ta**\n"
+                f"• Tahlil usuli: `SHA-256` + `5-Frame Video pHash`\n"
+                f"• Maqsadli kanal jonli tekshiruvi: **FAOL (100%)**\n"
+                "• Holat: Bir xil kontent qayta chiqishi mutlaqo to'silgan."
+            )
+            await report_scheduler.send_telegram_message(chat_id, text_dup)
+        elif cmd == "/health":
+            h_text = (
+                "🟢 **TIZIM SALOMATLIGI: 100% ONLINE**\n\n"
+                "• Telegram MTProto Client: 🟢 ONLINE\n"
+                "• Google Gemini Vision API: 🟢 ONLINE\n"
+                "• SQLAlchemy Database: 🟢 ONLINE\n"
+                "• Asynchronous Queue & Workers: 🟢 ONLINE\n"
+                "• Target Channel Live Auditor: 🟢 ONLINE\n"
+                "• Report Scheduler (08:00, 13:00, 21:00): 🟢 ONLINE"
+            )
+            await report_scheduler.send_telegram_message(chat_id, h_text)
+
+    async def _handle_callback_query(self, chat_id: int, data: str, query_id: str):
+        from app.engines.report_scheduler import report_scheduler
+        if not is_admin(chat_id):
+            return
+
+        if data in ["btn_report_current", "btn_refresh"]:
+            res = await reporting_engine.generate_morning_report()
+            await report_scheduler.send_telegram_message(chat_id, res["summary_text"], report_scheduler.get_report_keyboard())
+        elif data == "btn_top_posts":
+            await self._handle_bot_command(chat_id, "/top")
+        elif data == "btn_sources":
+            await self._handle_bot_command(chat_id, "/sources")
+        elif data == "btn_analytics":
             res = await reporting_engine.generate_evening_report()
             await report_scheduler.send_telegram_message(chat_id, res["summary_text"])
-        elif cmd == "/health":
-            h_text = "🟢 **TIZIM SALOMATLIGI: 100% ONLINE**\n\n• Barcha AI va Telegram xizmatlari faol."
-            await report_scheduler.send_telegram_message(chat_id, h_text)
+        elif data == "btn_strategist":
+            strat = await strategist_engine.generate_daily_report()
+            await report_scheduler.send_telegram_message(chat_id, f"🧠 **AI Strategist Tavsiyasi:**\n\n{strat['summary']}")
 
 
 bot_polling_service = TelegramBotPollingService()

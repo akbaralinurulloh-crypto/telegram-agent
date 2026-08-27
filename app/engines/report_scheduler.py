@@ -66,7 +66,7 @@ class ReportScheduler:
         return {
             "inline_keyboard": [
                 [
-                    {"text": "📊 Dashboard", "url": f"http://localhost:10000/dashboard"},
+                    {"text": "📊 Google Sheets", "url": "https://docs.google.com/spreadsheets/d/1aCLMLxsDDvAsXi1L9lVUhkFEOguXCsi_V13QikTB"},
                     {"text": "🏆 Top Postlar", "callback_data": "btn_top_posts"}
                 ],
                 [

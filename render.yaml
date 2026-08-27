@@ -29,7 +29,7 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: ADMIN_TELEGRAM_IDS
-        value: "7558601798"
+        value: "240409213, 7558601798"
       - key: REPORT_TIMEZONE
         value: Asia/Tashkent
       - key: MORNING_REPORT_TIME
