@@ -109,10 +109,11 @@ async def main():
     except Exception as e:
         logger.error(f"❌ Maqsadli kanalga ulanib bo'lmadi ({settings.TARGET_CHANNEL}): {e}")
 
-    # 7. Oxirgi postlarni skaner qilish
-    await scan_recent_messages(limit=30)
+    # 7. Mavjud postlarni dublikat bazasiga sinxronlash (Server qayta yoqilganda eski postlar takror chiqmasligi uchun)
+    await collector.sync_target_channel_history(limit=50)
+    await collector.sync_source_channels_history(limit=50)
 
-    # 8. Real-vaqt tinglovchisini boshlash
+    # 8. Real-vaqt tinglovchisini boshlash (Faqat yangi postlar uchun)
     await collector.start_listening()
 
     # 9. Davriy analitika vazifasini boshlash

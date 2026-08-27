@@ -260,3 +260,50 @@ async def get_analytics_summary():
                 for cost in costs
             ]
         }
+
+
+@router.post("/simulation/run")
+async def run_simulation(payload: Dict[str, Any]):
+    """What-if ssenariy simulyatsiyasini ishga tushirish."""
+    from app.engines.simulator import simulator_engine
+    candidate_ids = payload.get("candidate_ids", [])
+    scenario_name = payload.get("scenario_name", "Scenario A")
+    return await simulator_engine.simulate_scenario(candidate_ids, scenario_name)
+
+
+@router.get("/dna")
+async def get_content_dna():
+    """Kanalning eng sara TOP 10% postlari DNK modeli."""
+    from app.models.schema import ContentDNA
+    async with get_db_session() as session:
+        dna = (await session.execute(select(ContentDNA))).scalar_one_or_none()
+        if not dna:
+            dna = ContentDNA()
+            session.add(dna)
+            await session.commit()
+        return {
+            "channel": dna.channel_name,
+            "ideal_duration": f"{dna.ideal_duration_min}-{dna.ideal_duration_max} sec",
+            "top_categories": dna.top_categories,
+            "top_emotions": dna.top_emotions,
+            "top_keywords": dna.top_keywords,
+            "target_mix": dna.target_mix
+        }
+
+
+@router.get("/reports/export")
+async def export_csv_report():
+    """Postlar va tahlillar hisobotini CSV formatida eksport qilish."""
+    from fastapi.responses import Response
+    import csv
+    import io
+
+    async with get_db_session() as session:
+        posts = (await session.execute(select(Post).order_by(desc(Post.published_at)).limit(100))).scalars().all()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "CandidateID", "TargetChannel", "TargetMessageID", "Status", "PublishedAt", "Caption"])
+        for p in posts:
+            writer.writerow([p.id, p.candidate_id, p.target_channel, p.target_message_id, p.status, p.published_at.isoformat() if p.published_at else "", (p.caption_used or "")[:100]])
+
+        return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=posts_report.csv"})

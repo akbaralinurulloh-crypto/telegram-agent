@@ -327,3 +327,56 @@ class LegacyProcessedMessage(Base):
     original_caption = Column(Text, nullable=True)
     enhanced_caption = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DuplicateGroup(Base):
+    """Bir nechta manbalardan kelgan o'xshash medialar guruhi va eng yaxshi versiya."""
+    __tablename__ = "duplicate_groups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    group_hash = Column(String(64), unique=True, index=True)
+    representative_media_id = Column(Integer, ForeignKey("media_assets.id"), nullable=True)
+    best_media_id = Column(Integer, ForeignKey("media_assets.id"), nullable=True)
+    member_count = Column(Integer, default=1)
+    status = Column(String(32), default="ACTIVE") # ACTIVE, MERGED, DISMISSED
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ContentDNA(Base):
+    """Kanalning eng sara TOP 10% postlari profilining matematik modeli."""
+    __tablename__ = "content_dna"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    channel_name = Column(String(128), default="@muhtashamtraveluzz")
+    ideal_duration_min = Column(Integer, default=8)
+    ideal_duration_max = Column(Integer, default=30)
+    top_categories = Column(JSON, default=lambda: ["Makkah", "Madinah", "Spiritual"])
+    top_emotions = Column(JSON, default=lambda: ["Heartfelt", "Inspiring", "Peaceful"])
+    top_keywords = Column(JSON, default=lambda: ["Umra", "Kaaba", "Duo", "Haram", "Madina"])
+    target_mix = Column(JSON, default=lambda: {"Makkah": 30, "Madinah": 30, "Spiritual": 20, "Educational": 10, "Human Story": 10})
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ContentSequence(Base):
+    """Postlar ketma-ketligi samaradorligi modeli."""
+    __tablename__ = "content_sequences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sequence_pattern = Column(String(256), nullable=False) # e.g. "Makkah->Madinah->Spiritual"
+    sample_count = Column(Integer, default=1)
+    avg_engagement_boost = Column(Float, default=0.0)
+    last_tested_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SimulationScenario(Base):
+    """What-if simulyatsiya natijalari va ssenariylari."""
+    __tablename__ = "simulation_scenarios"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scenario_name = Column(String(128), nullable=False)
+    candidate_ids = Column(JSON, default=list)
+    predicted_views = Column(Integer, default=0)
+    predicted_engagement = Column(Float, default=0.0)
+    recommendation = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)

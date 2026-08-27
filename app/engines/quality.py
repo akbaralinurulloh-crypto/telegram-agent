@@ -25,13 +25,20 @@ class QualityEngine:
     """Media fayllarning texnik sifatini (resolution, contrast, audio, duration) baholovchi engine."""
 
     @staticmethod
-    def _analyze_image_stats(img: Image.Image) -> Tuple[float, float]:
-        # Kulrangga o'tkazib yorug'lik va kontrastni hisoblash
+    def _analyze_image_stats(img: Image.Image) -> Tuple[float, float, float]:
+        # Kulrangga o'tkazib yorug'lik, kontrast va tiniqlikni (sharpness) hisoblash
         gray = img.convert('L')
         stat = ImageStat.Stat(gray)
         mean_brightness = stat.mean[0]
         rms_contrast = stat.rms[0]
-        return mean_brightness, rms_contrast
+        
+        # Edge variance orqali xiralik (blur) darajasini aniqlash
+        from PIL import ImageFilter
+        edges = gray.filter(ImageFilter.FIND_EDGES)
+        edge_stat = ImageStat.Stat(edges)
+        sharpness = edge_stat.var[0] if edge_stat.var else 50.0
+
+        return mean_brightness, rms_contrast, sharpness
 
     @classmethod
     def evaluate_photo(cls, file_path: Path) -> TechnicalQualityReport:
@@ -39,7 +46,7 @@ class QualityEngine:
         try:
             with Image.open(file_path) as img:
                 w, h = img.size
-                brightness, contrast = cls._analyze_image_stats(img)
+                brightness, contrast, sharpness = cls._analyze_image_stats(img)
 
                 score = 70
                 # Resolution tekshiruvi
@@ -50,6 +57,13 @@ class QualityEngine:
                 elif w < 600 or h < 600:
                     score -= 25
                     issues.append("Past pikselli tasvir (kichik o'lcham)")
+
+                # Tiniqlik (Blur / Sharpness) tekshiruvi
+                if sharpness < 15.0:
+                    score -= 20
+                    issues.append("Xira (fokussiz / blur) tasvir")
+                elif sharpness > 150.0:
+                    score += 5
 
                 # Yorug'lik tekshiruvi
                 if brightness < 35:
